@@ -20,6 +20,11 @@ rustdoc-args = ["--cfg=docsrs"]
 [features]
 agave-unstable-api = []
 
+# FIREDANCER: Build as a static library so that it can be linked into the
+# firedancer binary.
+[lib]
+crate-type = ["staticlib"]
+
 [dependencies]
 agave-cpu-utils = { workspace = true }
 agave-feature-set = { workspace = true }
