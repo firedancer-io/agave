@@ -10,6 +10,11 @@ homepage = { workspace = true }
 license = { workspace = true }
 edition = { workspace = true }
 
+# FIREDANCER: Build as a static library so that it can be linked into the
+# firedancer binary.
+[lib]
+crate-type = ["staticlib"]
+
 [dependencies]
 agave-geyser-plugin-interface = { workspace = true }
 chrono = { workspace = true, features = ["default", "serde"] }
