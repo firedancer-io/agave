@@ -96,6 +96,7 @@ pub fn execute(
     solana_version: &str,
     operation: Operation,
     config: super::Config,
+    args: &Vec<std::ffi::OsString>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Debugging panics is easier with a backtrace
     if env::var_os("RUST_BACKTRACE").is_none() {
@@ -143,7 +144,8 @@ pub fn execute(
     cli::warn_for_deprecated_arguments(matches);
 
     info!("{} {}", crate_name!(), solana_version);
-    info!("Starting validator with: {:#?}", std::env::args_os());
+    // FIREDANCER: Dump provided arguments rather than ones from the environment
+    info!("Starting validator with: {:#?}", args);
 
     solana_metrics::set_host_id(identity_keypair.pubkey().to_string());
     solana_metrics::set_panic_hook("validator", Some(String::from(solana_version)));
