@@ -14,6 +14,9 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [lib]
 name = "solana_genesis"
+# FIREDANCER: Build as a static library so that it can be linked into the
+# firedancer binary.
+crate-type = ["staticlib"]
 
 [[bin]]
 name = "solana-genesis"
