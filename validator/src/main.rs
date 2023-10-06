@@ -2,7 +2,9 @@
 #[cfg(not(target_env = "msvc"))]
 use jemallocator::Jemalloc;
 use {
-    agave_validator::{
+    // FIREDANCER: We have inverted the dependency, so the library depends on main.rs so that this
+    // import now just needs to refer to the crate.
+    crate::{
         admin_rpc_service,
         admin_rpc_service::{load_staked_nodes_overrides, StakedNodesOverrides},
         bootstrap,
@@ -462,11 +464,19 @@ fn configure_banking_trace_dir_byte_limit(
     };
 }
 
-pub fn main() {
+// FIREDANCER: Switch main to be a function that takes arguments, rather than
+// an actual entrypoint for the binary.
+pub fn main<I, T>(itr: I)
+where
+        I: IntoIterator<Item = T>,
+        T: Into<std::ffi::OsString> + Clone {
+    let args: Vec<std::ffi::OsString> = itr.into_iter().map(|x| x.into()).collect();
+
     let default_args = DefaultArgs::new();
     let solana_version = solana_version::version!();
     let cli_app = app(solana_version, &default_args);
-    let matches = cli_app.get_matches();
+    // FIREDANCER: Parse matches from the provided arguments rather than env_os()
+    let matches = cli_app.get_matches_from(&args);
     warn_for_deprecated_arguments(&matches);
 
     let socket_addr_space = SocketAddrSpace::new(matches.is_present("allow_private_addr"));
@@ -934,7 +944,8 @@ pub fn main() {
     let _logger_thread = redirect_stderr_to_file(logfile);
 
     info!("{} {}", crate_name!(), solana_version);
-    info!("Starting validator with: {:#?}", std::env::args_os());
+    // FIREDANCER: Dump provided arguments rather than ones from the environment
+    info!("Starting validator with: {:#?}", args);
 
     let cuda = matches.is_present("cuda");
     if cuda {
