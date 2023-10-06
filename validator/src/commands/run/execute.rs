@@ -93,6 +93,7 @@ pub fn execute(
     matches: &ArgMatches,
     solana_version: &str,
     operation: Operation,
+    args: &Vec<std::ffi::OsString>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let run_args = RunArgs::from_clap_arg_match(matches)?;
 
@@ -123,7 +124,8 @@ pub fn execute(
     let _logger_thread = redirect_stderr_to_file(logfile);
 
     info!("{} {}", crate_name!(), solana_version);
-    info!("Starting validator with: {:#?}", std::env::args_os());
+    // FIREDANCER: Dump provided arguments rather than ones from the environment
+    info!("Starting validator with: {:#?}", args);
 
     let cuda = matches.is_present("cuda");
     if cuda {
