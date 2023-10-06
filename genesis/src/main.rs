@@ -15,7 +15,9 @@ use {
         },
     },
     solana_entry::poh::compute_hashes_per_tick,
-    solana_genesis::{genesis_accounts::add_genesis_accounts, Base64Account},
+    // FIREDANCER: We have inverted the dependency, so the library depends on main.rs so that this
+    // import now just needs to refer to the crate.
+    crate::{genesis_accounts::add_genesis_accounts, Base64Account},
     solana_ledger::{blockstore::create_new_ledger, blockstore_options::LedgerColumnOptions},
     solana_sdk::{
         account::{Account, AccountSharedData, ReadableAccount, WritableAccount},
@@ -106,8 +108,15 @@ pub fn load_genesis_accounts(file: &str, genesis_config: &mut GenesisConfig) -> 
     Ok(lamports)
 }
 
+// FIREDANCER: Switch main to be a function that takes arguments, rather than
+// an actual entrypoint for the binary.
 #[allow(clippy::cognitive_complexity)]
-fn main() -> Result<(), Box<dyn error::Error>> {
+pub fn main<I, T>(itr: I) -> Result<(), Box<dyn error::Error>>
+where
+        I: IntoIterator<Item = T>,
+        T: Into<std::ffi::OsString> + Clone {
+    let args: Vec<std::ffi::OsString> = itr.into_iter().map(|x| x.into()).collect();
+
     let default_faucet_pubkey = solana_cli_config::Config::default().keypair_path;
     let fee_rate_governor = FeeRateGovernor::default();
     let (
@@ -399,7 +408,8 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                 .possible_values(&["pico", "full", "none"])
                 .help("Selects inflation"),
         )
-        .get_matches();
+        // FIREDANCER: Parse matches from the provided arguments rather than env_os()
+        .get_matches_from(args);
 
     let ledger_path = PathBuf::from(matches.value_of("ledger_path").unwrap());
 
