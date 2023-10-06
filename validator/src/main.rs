@@ -2,7 +2,9 @@
 #[cfg(not(any(target_env = "msvc", target_os = "freebsd")))]
 use jemallocator::Jemalloc;
 use {
-    agave_validator::{
+    // FIREDANCER: We have inverted the dependency, so the library depends on main.rs so that this
+    // import now just needs to refer to the crate.
+    crate::{
         cli::{DefaultArgs, app},
         commands,
     },
@@ -14,11 +16,19 @@ use {
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
-pub fn main() {
+// FIREDANCER: Switch main to be a function that takes arguments, rather than
+// an actual entrypoint for the binary.
+pub fn main<I, T>(itr: I)
+where
+        I: IntoIterator<Item = T>,
+        T: Into<std::ffi::OsString> + Clone {
+    let args: Vec<std::ffi::OsString> = itr.into_iter().map(|x| x.into()).collect();
+
     let default_args = DefaultArgs::new();
     let solana_version = solana_version::version!();
     let cli_app = app(solana_version, &default_args);
-    let matches = cli_app.get_matches();
+    // FIREDANCER: Parse matches from the provided arguments rather than env_os()
+    let matches = cli_app.get_matches_from(&args);
 
     let ledger_path = PathBuf::from(matches.value_of("ledger_path").unwrap());
 
@@ -78,6 +88,7 @@ pub fn main() {
             solana_version,
             commands::run::execute::Operation::Initialize,
             run_config,
+            &args,
         )
         .inspect_err(|err| error!("Failed to initialize validator: {err}"))
         .map_err(commands::Error::Dynamic),
@@ -86,6 +97,7 @@ pub fn main() {
             solana_version,
             commands::run::execute::Operation::Run,
             run_config,
+            &args,
         )
         .inspect_err(|err| error!("Failed to start validator: {err}"))
         .map_err(commands::Error::Dynamic),
