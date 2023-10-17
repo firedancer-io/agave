@@ -146,10 +146,13 @@ pub const DEFAULT_CONTACT_SAVE_INTERVAL_MILLIS: u64 = 60_000;
 pub(crate) const CRDS_UNIQUE_PUBKEY_CAPACITY: usize = 8192;
 
 // Must have at least one socket to monitor the TVU port
+// FIREDANCER: Firedancer handles TVU ingress, so the sockets
+// Agave opens are unused.  Just open 1 to prevent an error
+// message if Agave affinity is not at least 8 cores.
 pub const MINIMUM_NUM_TVU_RECEIVE_SOCKETS: NonZeroUsize = NonZeroUsize::new(1).unwrap();
 pub const DEFAULT_NUM_TVU_RECEIVE_SOCKETS: NonZeroUsize = MINIMUM_NUM_TVU_RECEIVE_SOCKETS;
 pub const MINIMUM_NUM_TVU_RETRANSMIT_SOCKETS: NonZeroUsize = NonZeroUsize::new(1).unwrap();
-pub const DEFAULT_NUM_TVU_RETRANSMIT_SOCKETS: NonZeroUsize = NonZeroUsize::new(12).unwrap();
+pub const DEFAULT_NUM_TVU_RETRANSMIT_SOCKETS: NonZeroUsize = NonZeroUsize::new(1).unwrap();
 
 /// Number of QUIC endpoints for the votor datagram transport.
 pub const DEFAULT_NUM_VOTOR_QUIC_ENDPOINTS: NonZeroUsize = NonZeroUsize::new(1).unwrap();
