@@ -810,7 +810,7 @@ impl BankingSimulator {
         // irrelevant for the necessary minimum work for this simulation.
         let random_keypair = Arc::new(Keypair::new());
         let cluster_info_for_broadcast = Arc::new(ClusterInfo::new(
-            Node::new_localhost_with_pubkey(&random_keypair.pubkey(), 9001).info,
+            Node::new_localhost_with_pubkey(&random_keypair.pubkey(), 9001, 8003).info,
             random_keypair,
             SocketAddrSpace::Unspecified,
         ));
