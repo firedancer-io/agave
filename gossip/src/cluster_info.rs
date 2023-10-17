@@ -125,7 +125,10 @@ const MIN_NUM_STAKED_NODES: usize = 500;
 // Must have at least one socket to monitor the TVU port
 // The unsafes are safe because we're using fixed, known non-zero values
 pub const MINIMUM_NUM_TVU_SOCKETS: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(1) };
-pub const DEFAULT_NUM_TVU_SOCKETS: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(8) };
+// FIREDANCER: Firedancer handles TVU ingress, so the sockets
+// Agave opens are unused.  Just open 1 to prevent an error
+// message if Agave affinity is not at least 8 cores.
+pub const DEFAULT_NUM_TVU_SOCKETS: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(1) };
 
 #[derive(Debug, PartialEq, Eq, Error)]
 pub enum ClusterInfoError {
@@ -2731,6 +2734,9 @@ impl Node {
         // FIREDANCER: The desired TPU port is passed in from the config.toml file
         // so that it can be configured.
         firedancer_tpu_port: u16,
+        // FIREDANCER: The desired TVU port is passed in from the config.toml file
+        // so that it can be configured.
+        firedancer_tvu_port: u16,
     ) -> Node {
         let NodeConfig {
             gossip_addr,
@@ -2748,7 +2754,8 @@ impl Node {
         let socket_config = SocketConfig::default();
         let socket_config_reuseport = SocketConfig::default().reuseport(true);
 
-        let (tvu_port, tvu_sockets) = multi_bind_in_range_with_config(
+        // FIREDANCER: Correct TVU port is managed by Firedancer, so this is unused.
+        let (_tvu_port, tvu_sockets) = multi_bind_in_range_with_config(
             bind_ip_addr,
             port_range,
             socket_config_reuseport,
@@ -2756,7 +2763,7 @@ impl Node {
         )
         .expect("tvu multi_bind");
 
-        let (tvu_quic_port, tvu_quic) =
+        let (_tvu_quic_port, tvu_quic) =
             Self::bind_with_config(bind_ip_addr, port_range, socket_config);
 
         let (tpu_port, tpu_sockets) =
@@ -2835,8 +2842,10 @@ impl Node {
         let addr = gossip_addr.ip();
         use contact_info::Protocol::{QUIC, UDP};
         info.set_gossip((addr, gossip_port)).unwrap();
-        info.set_tvu(UDP, (addr, tvu_port)).unwrap();
-        info.set_tvu(QUIC, (addr, tvu_quic_port)).unwrap();
+        // FIREDANCER: The port we receive shreds on is determined by the Firedancer config,
+        // not whatever port Solana Labs manages to bind.
+        info.set_tvu(UDP, (addr, firedancer_tvu_port)).unwrap();
+        info.set_tvu(QUIC, (addr, firedancer_tvu_port)).unwrap();
         // FIREDANCER: The port we receive transactions on is determined by the Firedancer config,
         // not whatever port Solana Labs manages to bind.
         // info.set_tpu(public_tpu_addr.unwrap_or_else(|| SocketAddr::new(addr, tpu_port)))
