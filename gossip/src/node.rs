@@ -88,12 +88,12 @@ impl Node {
     /// create localhost node for tests
     pub fn new_localhost() -> Self {
         let pubkey = solana_pubkey::new_rand();
-        Self::new_localhost_with_pubkey(&pubkey, 9001)
+        Self::new_localhost_with_pubkey(&pubkey, 9001, 8003)
     }
 
     /// create localhost node for tests with provided pubkey
     /// unlike the [new_with_external_ip], this will also bind RPC sockets.
-    pub fn new_localhost_with_pubkey(pubkey: &Pubkey, firedancer_tpu_port: u16) -> Self {
+    pub fn new_localhost_with_pubkey(pubkey: &Pubkey, firedancer_tpu_port: u16, firedancer_tvu_port: u16) -> Self {
         let port_range = localhost_port_range_for_tests();
         let bind_ip_addr = IpAddr::V4(Ipv4Addr::LOCALHOST);
         let config = NodeConfig {
@@ -110,7 +110,7 @@ impl Node {
                 .expect("Number of QUIC endpoints can not be zero"),
             num_votor_quic_endpoints: DEFAULT_NUM_VOTOR_QUIC_ENDPOINTS,
         };
-        let mut node = Self::new_with_external_ip(pubkey, config, firedancer_tpu_port);
+        let mut node = Self::new_with_external_ip(pubkey, config, firedancer_tpu_port, firedancer_tvu_port);
         let rpc_ports: [u16; 2] = find_available_ports_in_range(bind_ip_addr, port_range).unwrap();
         let rpc_addr = SocketAddr::new(bind_ip_addr, rpc_ports[0]);
         let rpc_pubsub_addr = SocketAddr::new(bind_ip_addr, rpc_ports[1]);
@@ -125,6 +125,9 @@ impl Node {
         // FIREDANCER: The desired TPU port is passed in from the config.toml file
         // so that it can be configured.
         firedancer_tpu_port: u16,
+        // FIREDANCER: The desired TVU port is passed in from the config.toml file
+        // so that it can be configured.
+        firedancer_tvu_port: u16,
     ) -> Node {
         let NodeConfig {
             advertised_ip,
@@ -155,6 +158,7 @@ impl Node {
 
         let socket_configs = Self::create_socket_configs();
 
+        // FIREDANCER: Correct TVU port is managed by Firedancer, so this is unused.
         let (tvu_port, mut tvu_sockets) = multi_bind_in_range_with_config(
             bind_ip_addr,
             port_range,
@@ -162,6 +166,7 @@ impl Node {
             num_tvu_receive_sockets.get(),
         )
         .expect("tvu multi_bind");
+
         // Multihoming RX for TVU
         tvu_sockets.append(
             &mut Self::bind_to_extra_ip(
@@ -376,9 +381,12 @@ impl Node {
         );
 
         info.set_gossip((advertised_ip, gossip_ports[0])).unwrap();
+        // FIREDANCER: The port we receive shreds on is determined by the Firedancer config,
+        // not whatever port Solana Labs manages to bind.
+        // Upstream removed TVU QUIC, and Firedancer also only supports TVU over UDP.
         info.set_tvu(
             UDP,
-            public_tvu_addr.unwrap_or_else(|| SocketAddr::new(advertised_ip, tvu_port)),
+            public_tvu_addr.unwrap_or_else(|| SocketAddr::new(advertised_ip, firedancer_tvu_port)),
         )
         .unwrap();
         // FIREDANCER: The port we receive transactions on is determined by the Firedancer config,
