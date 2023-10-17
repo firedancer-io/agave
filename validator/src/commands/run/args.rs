@@ -1673,4 +1673,14 @@ pub fn add_args<'a>(app: App<'a, 'a>, default_args: &'a DefaultArgs) -> App<'a, 
             .validator(is_parsable::<u16>)
             .help("Port to use for receiving transactions in the TPU."),
     )
+    // FIREDANCER: Port number to use for the TVU. This is passed from the Firedancer
+    // config.toml file and then gets wired up to the Solana Labs gossip code so that
+    // the correct port gets broadcast.
+    .arg(
+        Arg::with_name("firedancer_tvu_port")
+            .long("firedancer-tvu-port")
+            .takes_value(true)
+            .validator(is_parsable::<u16>)
+            .help("Port to use for receiving transactions in the TVU."),
+    )
 }
