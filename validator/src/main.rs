@@ -2072,14 +2072,19 @@ where
         .map(ContactInfo::new_gossip_entry_point)
         .collect::<Vec<_>>();
 
-    // FIREDANCER: Get TPU port from the CLI.
+    // FIREDANCER: Get application ports from the CLI.
     let firedancer_tpu_port = value_t_or_exit!(matches, "firedancer_tpu_port", u16);
+    let firedancer_tvu_port = value_t_or_exit!(matches, "firedancer_tvu_port", u16);
+
     let mut node = Node::new_with_external_ip(
         &identity_keypair.pubkey(),
         node_config,
         // FIREDANCER: Desired port for the TPU is passed in from the config file, so it
         // can be broadcast correctly via. gossip.
         firedancer_tpu_port,
+        // FIREDANCER: Desired port for the TVU is passed in from the config file, so it
+        // can be broadcast correctly via. gossip.
+        firedancer_tvu_port,
     );
 
     if restricted_repair_only_mode {
