@@ -65,7 +65,10 @@ solana-program-runtime = { workspace = true }
 solana-pubkey = { version = "=2.2.1", default-features = false }
 solana-pubsub-client = { workspace = true }
 solana-quic-client = { workspace = true }
-solana-remote-wallet = { workspace = true, features = ["default"] }
+# FIREDANCER: Turn features off for solana-remote-wallet so we don't
+# need the hidapi dependency.
+# solana-remote-wallet = { workspace = true, features = ["default"] }
+solana-remote-wallet = { workspace = true, features = [] }
 solana-rent = "=2.2.1"
 solana-rpc-client = { workspace = true, features = ["default"] }
 solana-rpc-client-api = { workspace = true }
