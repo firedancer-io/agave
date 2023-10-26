@@ -1092,6 +1092,14 @@ pub fn execute(
         .map(ContactInfo::new_gossip_entry_point)
         .collect::<Vec<_>>();
 
+    // FIREDANCER: Send shred version that we retrieved from the command line or the entrypoint above to Firedancer
+    if let Some(shred_version) = expected_shred_version {
+        unsafe extern "C" {
+            fn fd_ext_shred_set_shred_version( shred_version: u64 );
+        }
+        unsafe { fd_ext_shred_set_shred_version(shred_version as u64) };
+    }
+
     if restricted_repair_only_mode {
         // When in --restricted_repair_only_mode is enabled only the gossip and repair ports
         // need to be reachable by the entrypoint to respond to gossip pull requests and repair
