@@ -2029,6 +2029,14 @@ where
     let firedancer_tpu_port = value_t_or_exit!(matches, "firedancer_tpu_port", u16);
     let firedancer_tvu_port = value_t_or_exit!(matches, "firedancer_tvu_port", u16);
 
+    // FIREDANCER: Send shred version that we retrieved from the command line or the entrypoint above to Firedancer
+    if let Some(shred_version) = expected_shred_version {
+        extern "C" {
+            fn fd_ext_shred_set_shred_version( shred_version: u64 );
+        }
+        unsafe { fd_ext_shred_set_shred_version(shred_version as u64) };
+    }
+
     let mut node = Node::new_with_external_ip(
         &identity_keypair.pubkey(),
         node_config,
