@@ -90,7 +90,12 @@ trees = { workspace = true }
 # when also using the bzip2 crate
 version = "0.22.0"
 default-features = false
-features = ["lz4"]
+# FIREDANCER: The rocksdb crate even with default features disabled,
+# will add libz and libbz2 crates, without the static features. Thus,
+# we add back the bzip2 feature to RocksDB, which somehow fixes this
+# behavior.
+# features = ["lz4"]
+features = ["bzip2", "lz4"]
 
 [dev-dependencies]
 bs58 = { workspace = true }
