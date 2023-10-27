@@ -13,7 +13,11 @@ edition = { workspace = true }
 backoff = { workspace = true, features = ["tokio"] }
 bincode = { workspace = true }
 bytes = { workspace = true }
-bzip2 = { workspace = true }
+# FIREDANCER: Firedancer never links with libbz2, but the crate thinks
+# it will and doesn't link it statically if it finds it in PKG_CONFIG.
+# We prevent this and always link statically.
+# bzip2 = { workspace = true }
+bzip2 = { workspace = true, features = ["static"] }
 enum-iterator = { workspace = true }
 flate2 = { workspace = true }
 futures = { workspace = true }
