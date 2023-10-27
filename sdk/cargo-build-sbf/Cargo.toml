@@ -10,7 +10,11 @@ license = { workspace = true }
 edition = { workspace = true }
 
 [dependencies]
-bzip2 = { workspace = true }
+# FIREDANCER: Firedancer never links with libbz2, but the crate thinks
+# it will and doesn't link it statically if it finds it in PKG_CONFIG.
+# We prevent this and always link statically.
+# bzip2 = { workspace = true }
+bzip2 = { workspace = true, features = ["static"] }
 cargo_metadata = { workspace = true }
 clap = { version = "3.1.5", features = ["cargo", "env"] }
 itertools = { workspace = true }

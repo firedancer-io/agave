@@ -12,7 +12,11 @@ edition = { workspace = true }
 [dependencies]
 atty = { workspace = true }
 bincode = { workspace = true }
-bzip2 = { workspace = true }
+# FIREDANCER: Firedancer never links with libbz2, but the crate thinks
+# it will and doesn't link it statically if it finds it in PKG_CONFIG.
+# We prevent this and always link statically.
+# bzip2 = { workspace = true }
+bzip2 = { workspace = true, features = ["static"] }
 chrono = { workspace = true, features = ["default", "serde"] }
 clap = { workspace = true }
 console = { workspace = true }
