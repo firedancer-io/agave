@@ -18,7 +18,11 @@ blake3 = { workspace = true }
 bv = { workspace = true, features = ["serde"] }
 bytemuck = { workspace = true }
 byteorder = { workspace = true }
-bzip2 = { workspace = true }
+# FIREDANCER: Firedancer never links with libbz2, but the crate thinks
+# it will and doesn't link it statically if it finds it in PKG_CONFIG.
+# We prevent this and always link statically.
+# bzip2 = { workspace = true }
+bzip2 = { workspace = true, features = ["static"] }
 crossbeam-channel = { workspace = true }
 dashmap = { workspace = true, features = ["rayon", "raw-api"] }
 dir-diff = { workspace = true }
