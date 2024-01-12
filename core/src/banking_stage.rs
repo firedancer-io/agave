@@ -427,6 +427,17 @@ impl BankingStage {
         prioritization_fee_cache: &Arc<PrioritizationFeeCache>,
     ) -> Self {
         assert!(num_threads >= MIN_TOTAL_THREADS);
+        // FIREDANCER: The Firedancer PoH tile needs access to a Committer object
+        // to reuse the code in there for committing transactions. We just store
+        // one in a global here on boot.
+        committer::FIREDANCER_COMMITTER.store(
+            Box::into_raw(Box::new(Committer::new(
+                transaction_status_sender.clone(),
+                replay_vote_sender.clone(),
+                prioritization_fee_cache.clone(),
+            ))) as *const Committer as u64,
+            Ordering::Release,
+        );
         // Single thread to generate entries from many banks.
         // This thread talks to poh_service and broadcasts the entries once they have been recorded.
         // Once an entry has been recorded, its blockhash is registered with the bank.
@@ -515,6 +526,17 @@ impl BankingStage {
         enable_forwarding: bool,
     ) -> Self {
         assert!(num_threads >= MIN_TOTAL_THREADS);
+        // FIREDANCER: The Firedancer PoH tile needs access to a Committer object
+        // to reuse the code in there for committing transactions. We just store
+        // one in a global here on boot.
+        committer::FIREDANCER_COMMITTER.store(
+            Box::into_raw(Box::new(Committer::new(
+                transaction_status_sender.clone(),
+                replay_vote_sender.clone(),
+                prioritization_fee_cache.clone(),
+            ))) as *const Committer as u64,
+            Ordering::Release,
+        );
         // Single thread to generate entries from many banks.
         // This thread talks to poh_service and broadcasts the entries once they have been recorded.
         // Once an entry has been recorded, its blockhash is registered with the bank.
