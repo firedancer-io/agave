@@ -744,6 +744,7 @@ impl ReplayStage {
                     &blockstore,
                     working_bank,
                     &mut poh_controller,
+                    &poh_recorder,
                     &leader_schedule_cache,
                 );
                 // initially we wait for poh service to pick up the bank.
@@ -1139,6 +1140,7 @@ impl ReplayStage {
                                     &blockstore,
                                     reset_bank.clone(),
                                     &mut poh_controller,
+                                    &poh_recorder,
                                     &leader_schedule_cache,
                                 );
                                 last_reset = reset_bank.last_blockhash();
@@ -2279,6 +2281,7 @@ impl ReplayStage {
             update_bank_forks_and_poh_recorder_for_new_tpu_bank(
                 bank_forks,
                 poh_controller,
+                &poh_recorder,
                 tpu_bank,
             );
             Some(poh_slot)
@@ -2908,7 +2911,8 @@ impl ReplayStage {
         my_pubkey: &Pubkey,
         blockstore: &Blockstore,
         bank: Arc<Bank>,
-        poh_controller: &mut PohController,
+        _poh_controller: &mut PohController,
+        poh_recorder: &RwLock<PohRecorder>,
         leader_schedule_cache: &LeaderScheduleCache,
     ) {
         let slot = bank.slot();
@@ -2922,10 +2926,12 @@ impl ReplayStage {
             GRACE_TICKS_FACTOR * MAX_GRACE_SLOTS,
         );
 
-        if poh_controller.reset(bank, next_leader_slot).is_err() {
-            warn!("Failed to reset poh, poh service is disconnected");
-            return;
-        }
+        // FIREDANCER: do not use the poh_controller
+        // if poh_controller.reset(bank, next_leader_slot).is_err() {
+        //     warn!("Failed to reset poh, poh service is disconnected");
+        //     return;
+        // }
+        poh_recorder.write().unwrap().reset(bank, next_leader_slot);
 
         let next_leader_msg = if let Some(next_leader_slot) = next_leader_slot {
             format!("My next leader slot is {}", next_leader_slot.0)
@@ -9389,6 +9395,7 @@ pub(crate) mod tests {
             &blockstore,
             working_bank.clone(),
             &mut poh_controller,
+            &poh_recorder,
             &leader_schedule_cache,
         );
         wait_for_poh_service(&poh_controller);
@@ -9749,6 +9756,7 @@ pub(crate) mod tests {
             &blockstore,
             working_bank.clone(),
             &mut poh_controller,
+            &poh_recorder,
             &leader_schedule_cache,
         );
         wait_for_poh_service(&poh_controller);
