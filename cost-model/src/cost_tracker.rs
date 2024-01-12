@@ -136,6 +136,11 @@ impl CostTracker {
         self.block_cost_limit
     }
 
+    // FIREDANCER: accessor needed for proper cu accounting in pack
+    pub fn get_account_limit(&self) -> u64 {
+        self.account_cost_limit
+    }
+
     /// allows to adjust limits initiated during construction
     pub fn set_limits(
         &mut self,
