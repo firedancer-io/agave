@@ -9219,6 +9219,7 @@ dependencies = [
 name = "solana-poh"
 version = "2.3.6"
 dependencies = [
+ "agave-feature-set",
  "assert_matches",
  "bincode",
  "core_affinity",
@@ -9228,6 +9229,7 @@ dependencies = [
  "qualifier_attr",
  "rand 0.8.5",
  "solana-clock",
+ "solana-cost-model",
  "solana-entry",
  "solana-hash",
  "solana-keypair",
