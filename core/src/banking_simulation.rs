@@ -58,6 +58,29 @@ use {
     thiserror::Error,
 };
 
+use std::{ffi::c_void, ptr};
+
+#[no_mangle]
+extern "C" fn fd_ext_poh_initialize(
+    _tick_duration_nanos: u64,
+   _hashcnt_per_tick: u64,
+    _ticks_per_slot: u64,
+    _tick_height: u64,
+    _last_entry_hash: *const u8,
+    _signal_leader_change: *mut c_void ) {}
+
+#[no_mangle]
+extern "C" fn fd_ext_poh_get_leader_after_n_slots( _n: u64, _out_pubkey: *mut u8) -> i32 { 0 }
+
+#[no_mangle]
+extern "C" fn fd_ext_poh_acquire_leader_bank() -> *const c_void { ptr::null() }
+
+#[no_mangle]
+extern "C" fn fd_ext_poh_begin_leader( _bank: *const c_void, _slot: u64, _hashcnt_per_tick: u64 ) {}
+
+#[no_mangle]
+extern "C" fn fd_ext_poh_reset() -> u64 { 0 }
+
 /// This creates a simulated environment around `BankingStage` to produce leader's blocks based on
 /// recorded banking trace events (`TimedTracedEvent`).
 ///
@@ -726,8 +749,26 @@ impl BankingSimulator {
             exit.clone(),
         );
         let poh_recorder = Arc::new(RwLock::new(poh_recorder));
+        // FIREDANCER: The PoHService is unused and takes the original PoH recorder as the
+        //             argument. This fixes the compilation for agave-ledger-tool but does
+        //             not support the banking simulation functionality correctly.
+        let (old_poh_recorder, _, _) = solana_poh::old_poh_recorder::PohRecorder::new_with_clear_signal(
+                bank.tick_height(),
+                bank.last_blockhash(),
+                bank.clone(),
+               None,
+                bank.ticks_per_slot(),
+                false,
+                blockstore.clone(),
+                blockstore.get_new_shred_signal(0),
+                &leader_schedule_cache,
+                &genesis_config.poh_config,
+                None,
+                exit.clone(),
+            );
+        let old_poh_recorder = Arc::new(RwLock::new(old_poh_recorder));
         let poh_service = PohService::new(
-            poh_recorder.clone(),
+            old_poh_recorder.clone(),
             &genesis_config.poh_config,
             exit.clone(),
             bank.ticks_per_slot(),
