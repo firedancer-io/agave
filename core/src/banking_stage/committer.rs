@@ -23,6 +23,98 @@ use {
     std::{collections::HashMap, sync::Arc},
 };
 
+pub(crate) static FIREDANCER_COMMITTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+#[no_mangle]
+pub extern "C" fn fd_ext_bank_pre_balance_info( bank: *const std::ffi::c_void, txns: *const std::ffi::c_void, txn_count: u64 ) -> *mut std::ffi::c_void {
+    use solana_sdk::transaction::SanitizedTransaction;
+    use std::borrow::Cow;
+    use std::sync::atomic::Ordering;
+
+    let txns = unsafe {
+        std::slice::from_raw_parts(txns as *const SanitizedTransaction, txn_count as usize)
+    };
+    let bank = bank as *const Bank;
+    unsafe { Arc::increment_strong_count(bank) };
+    let bank = unsafe { Arc::from_raw( bank as *const Bank ) };
+
+    let lock_results = txns.iter().map(|_| Ok(()) ).collect::<Vec<_>>();
+    let mut batch = TransactionBatch::new(lock_results, bank.as_ref(), Cow::Borrowed(txns));
+    batch.set_needs_unlock(false); /* Accounts not actually locked. */
+
+    loop {
+        if FIREDANCER_COMMITTER.load(Ordering::Relaxed) != 0 {
+            break;
+        }
+        std::hint::spin_loop();
+    }
+    let committer: &Committer = unsafe { (FIREDANCER_COMMITTER.load(Ordering::Acquire) as *const Committer).as_ref().unwrap() };
+
+    let mut pre_balance_info = Box::new(PreBalanceInfo::default());
+    if committer.transaction_status_sender_enabled() {
+        pre_balance_info.native = bank.collect_balances(&batch);
+        pre_balance_info.token =
+            collect_token_balances(&bank, &batch, &mut pre_balance_info.mint_decimals)
+    }
+    Box::into_raw(pre_balance_info) as *mut std::ffi::c_void
+}
+
+#[no_mangle]
+pub extern "C" fn fd_ext_bank_release_pre_balance_info( pre_balance_info: *mut std::ffi::c_void ) {
+    let pre_balance_info = unsafe { Box::from_raw( pre_balance_info as *mut PreBalanceInfo ) };
+    drop(pre_balance_info);
+}
+
+#[no_mangle]
+pub extern "C" fn fd_ext_bank_commit_txns( bank: *const std::ffi::c_void, txns: *const std::ffi::c_void, txn_count: u64, load_and_execute_output: *mut std::ffi::c_void, pre_balance_info: *mut std::ffi::c_void ) {
+    use solana_sdk::transaction::SanitizedTransaction;
+    use solana_runtime::bank::LoadAndExecuteTransactionsOutput;
+    use std::borrow::Cow;
+    use std::sync::atomic::Ordering;
+
+    let txns = unsafe {
+        std::slice::from_raw_parts(txns as *const SanitizedTransaction, txn_count as usize)
+    };
+    let bank = bank as *const Bank;
+    unsafe { Arc::increment_strong_count(bank) };
+    let bank = unsafe { Arc::from_raw( bank as *const Bank ) };
+
+    let mut load_and_execute_output: Box<LoadAndExecuteTransactionsOutput> = unsafe { Box::from_raw( load_and_execute_output as *mut LoadAndExecuteTransactionsOutput ) };
+
+    let lock_results = txns.iter().map(|_| Ok(()) ).collect::<Vec<_>>();
+    let mut batch = TransactionBatch::new(lock_results, bank.as_ref(), Cow::Borrowed(txns));
+    batch.set_needs_unlock(false); /* Accounts not actually locked. */
+    let (last_blockhash, lamports_per_signature) = bank.last_blockhash_and_lamports_per_signature();
+
+    loop {
+        // This isn't strictly necessary because the banking stage has to have
+        // retrieved a committer in order for this function to be called (to get
+        // pre_balance_info), but keep it because we plan on removing
+        // pre_balance_info.
+        if FIREDANCER_COMMITTER.load(Ordering::Relaxed) != 0 {
+            break;
+        }
+        std::hint::spin_loop();
+    }
+    let committer: &Committer = unsafe { (FIREDANCER_COMMITTER.load(Ordering::Acquire) as *const Committer).as_ref().unwrap() };
+    let mut timings = LeaderExecuteAndCommitTimings::default();
+    let mut pre_balance_info = unsafe { Box::from_raw( pre_balance_info as *mut PreBalanceInfo ) };
+    let _ = committer.commit_transactions(
+        &batch,
+        &mut load_and_execute_output.loaded_transactions,
+        load_and_execute_output.execution_results,
+        last_blockhash,
+        lamports_per_signature,
+        None,
+        &bank,
+        &mut *pre_balance_info,
+        &mut timings,
+        load_and_execute_output.signature_count,
+        load_and_execute_output.executed_transactions_count,
+        load_and_execute_output.executed_non_vote_transactions_count,
+        load_and_execute_output.executed_with_successful_result_count);
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CommitTransactionDetails {
     Committed { compute_units: u64 },
