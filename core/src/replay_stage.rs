@@ -48,6 +48,7 @@ use {
         entry_notifier_service::EntryNotifierSender,
         leader_schedule_cache::LeaderScheduleCache,
         leader_schedule_utils::first_of_consecutive_leader_slots,
+        shred,
     },
     solana_measure::measure::Measure,
     solana_poh::poh_recorder::{PohLeaderStatus, PohRecorder, GRACE_TICKS_FACTOR, MAX_GRACE_SLOTS},
@@ -2892,6 +2893,19 @@ impl ReplayStage {
             Some(blockstore),
             GRACE_TICKS_FACTOR * MAX_GRACE_SLOTS,
         );
+
+        // code analogous to broadcast_utils::get_chained_merkle_root_from_parent
+        let block_id = blockstore
+            .meta(slot)
+            .unwrap_or(None)
+            .map_or(None, |meta| meta.last_index)
+            .map_or(None, |index| {
+                blockstore
+                    .get_data_shred(slot, index)
+                    .unwrap_or(None)
+                    .map_or(None, |shred| shred::layout::get_merkle_root(&shred))
+            });
+        bank.set_block_id(block_id);
 
         poh_recorder.write().unwrap().reset(bank, next_leader_slot);
 
