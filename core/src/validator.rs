@@ -1897,6 +1897,11 @@ fn load_genesis(
     Ok(genesis_config)
 }
 
+extern "C" {
+    /// FIREDANCER: Notify Firedancer what the blockstore is.
+    fn fd_ext_store_initialize( store: *const std::ffi::c_void );
+}
+
 #[allow(clippy::type_complexity)]
 fn load_blockstore(
     config: &ValidatorConfig,
@@ -1940,6 +1945,9 @@ fn load_blockstore(
     let original_blockstore_root = blockstore.max_root();
 
     let blockstore = Arc::new(blockstore);
+    // FIREDANCER: Notify Firedancer of the blockstore.
+    unsafe { fd_ext_store_initialize( Arc::into_raw(Arc::clone(&blockstore)) as *const std::ffi::c_void ) }
+
     let blockstore_root_scan = BlockstoreRootScan::new(config, blockstore.clone(), exit.clone());
     let halt_at_slot = config
         .halt_at_slot
