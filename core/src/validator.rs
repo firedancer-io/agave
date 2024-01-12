@@ -575,7 +575,8 @@ pub struct Validator {
     completed_data_sets_service: Option<CompletedDataSetsService>,
     snapshot_packager_service: Option<SnapshotPackagerService>,
     poh_recorder: Arc<RwLock<PohRecorder>>,
-    poh_service: PohService,
+    // FIREDANCER: PoH service is owned by Firedancer.
+    // poh_service: PohService,
     tpu: Tpu,
     tvu: Tvu,
     ip_echo_server: Option<solana_net_utils::IpEchoServer>,
@@ -955,7 +956,9 @@ impl Validator {
 
         let leader_schedule_cache = Arc::new(leader_schedule_cache);
         let startup_verification_complete;
-        let (poh_recorder, entry_receiver, record_receiver) = {
+        // FIREDANCER: Record receiver not used since Firedancer replaces the TPU.
+        // let (poh_recorder, entry_receiver, record_receiver) = {
+        let (poh_recorder, entry_receiver, _record_receiver) = {
             let bank = &bank_forks.read().unwrap().working_bank();
             startup_verification_complete = Arc::clone(bank.get_startup_verification_complete());
             PohRecorder::new_with_clear_signal(
@@ -1332,15 +1335,17 @@ impl Validator {
         let wait_for_vote_to_start_leader =
             !waited_for_supermajority && !config.no_wait_for_vote_to_start_leader;
 
-        let poh_service = PohService::new(
-            poh_recorder.clone(),
-            &genesis_config.poh_config,
-            exit.clone(),
-            bank_forks.read().unwrap().root_bank().ticks_per_slot(),
-            config.poh_pinned_cpu_core,
-            config.poh_hashes_per_batch,
-            record_receiver,
-        );
+        // FIREDANCER: PoH service is owned by Firedancer.
+        let _: PohService; /* Silence unused type warnings */
+        // let poh_service = PohService::new(
+        //     poh_recorder.clone(),
+        //     &genesis_config.poh_config,
+        //     exit.clone(),
+        //     bank_forks.read().unwrap().root_bank().ticks_per_slot(),
+        //     config.poh_pinned_cpu_core,
+        //     config.poh_hashes_per_batch,
+        //     record_receiver,
+        // );
         assert_eq!(
             blockstore.get_new_shred_signals_len(),
             1,
@@ -1650,7 +1655,8 @@ impl Validator {
             completed_data_sets_service,
             tpu,
             tvu,
-            poh_service,
+            // FIREDANCER: PoH service is owned by Firedancer.
+            // poh_service,
             poh_recorder,
             ip_echo_server,
             validator_exit: config.validator_exit.clone(),
@@ -1713,7 +1719,10 @@ impl Validator {
         drop(self.bank_forks);
         drop(self.cluster_info);
 
-        self.poh_service.join().expect("poh_service");
+        // FIREDANCER: PoH service and recorder are owned by Firedancer.
+        // The Firedancer PoH service never exits.
+        // self.poh_service.join().expect("poh_service");
+        loop { if false { break; } sleep(Duration::from_secs(60) ) }
         drop(self.poh_recorder);
 
         if let Some(json_rpc_service) = self.json_rpc_service {
