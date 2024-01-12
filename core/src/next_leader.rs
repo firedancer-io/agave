@@ -19,7 +19,11 @@ pub(crate) fn upcoming_leader_tpu_vote_sockets(
 ) -> Vec<SocketAddr> {
     let upcoming_leaders = {
         let poh_recorder = poh_recorder.read().unwrap();
-        (1..=fanout_slots)
+        // FIREDANCER: The Agave PoH recorder has an off by one error in leader_after_n_slots
+        // which we fix with our PoH implementation, but it causes the fanout leaders to be
+        // wrong here, which expects the bug, so we correct this to not undo the off by one.
+        // (1..=fanout_slots)
+        (0..=fanout_slots)
             .filter_map(|n_slots| poh_recorder.leader_after_n_slots(n_slots))
             .collect_vec()
     };

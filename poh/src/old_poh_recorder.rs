@@ -1013,7 +1013,6 @@ impl PohRecorder {
             self.tick();
         }
     }
-
     #[allow(clippy::too_many_arguments)]
     pub fn new_with_clear_signal(
         tick_height: u64,
