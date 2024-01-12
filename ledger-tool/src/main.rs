@@ -35,7 +35,7 @@ use {
     solana_core::{
         banking_simulation::{BankingSimulator, BankingTraceEvents},
         system_monitor_service::{SystemMonitorService, SystemMonitorStatsReportConfig},
-        validator::{BlockProductionMethod, BlockVerificationMethod, TransactionStructure},
+        validator::{BlockProductionMethod, BlockVerificationMethod, /*TransactionStructure*/},
     },
     solana_cost_model::{cost_model::CostModel, cost_tracker::CostTracker},
     solana_ledger::{
@@ -1470,8 +1470,9 @@ fn main() {
                 ),
         )
         .subcommand(
+            // FIREDANCER: this command is not supported
             SubCommand::with_name("simulate-block-production")
-                .about("Simulate producing blocks with banking trace event files in the ledger")
+                .about("[UNSUPPORTED] Simulate producing blocks with banking trace event files in the ledger")
                 .arg(&load_genesis_config_arg)
                 .args(&accounts_db_config_args)
                 .args(&snapshot_config_args)
@@ -2480,7 +2481,12 @@ fn main() {
                         system_monitor_service.join().unwrap();
                     }
                 }
-                ("simulate-block-production", Some(arg_matches)) => {
+                ("simulate-block-production", Some(_arg_matches)) => {
+                // FIREDANCER: Banking simulation using the agave-ledger-tool
+                //             is not supported with the firedancer poh recorder
+                    info!("This command is not supported.");
+                    exit(1);
+                /*
                     let mut process_options = parse_process_options(&ledger_path, arg_matches);
 
                     let banking_trace_events = load_banking_trace_events_or_exit(&ledger_path);
@@ -2538,6 +2544,7 @@ fn main() {
                             exit(1);
                         }
                     };
+                */
                 }
                 ("accounts", Some(arg_matches)) => {
                     let process_options = parse_process_options(&ledger_path, arg_matches);
