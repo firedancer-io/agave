@@ -21,11 +21,13 @@ dev-context-only-utils = []
 
 [dependencies]
 arc-swap = { workspace = true }
+agave-feature-set = { workspace = true }
 core_affinity = { workspace = true }
 crossbeam-channel = { workspace = true }
 log = { workspace = true }
 qualifier_attr = { workspace = true }
 solana-clock = { workspace = true }
+solana-cost-model = { workspace = true }
 solana-entry = { workspace = true }
 solana-hash = { workspace = true }
 solana-ledger = { workspace = true }
