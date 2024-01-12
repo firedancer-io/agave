@@ -401,7 +401,7 @@ impl BankingStage {
             transaction_recorder,
             poh_recorder,
             bank_forks,
-            committer,
+            committer: committer.clone(),
             log_messages_bytes_limit,
         };
         let non_vote_thread_hdls = Self::new_central_scheduler(
@@ -409,6 +409,7 @@ impl BankingStage {
             use_greedy_scheduler,
             num_workers,
             non_vote_context.clone(),
+            committer,
         );
 
         Self {
@@ -423,7 +424,15 @@ impl BankingStage {
         use_greedy_scheduler: bool,
         num_workers: NonZeroUsize,
         context: BankingStageNonVoteContext,
+        committer: Committer,
     ) -> Vec<JoinHandle<()>> {
+        // FIREDANCER: The Firedancer PoH tile needs access to a Committer object
+        // to reuse the code in there for committing transactions. We just store
+        // one in a global here on boot.
+        committer::FIREDANCER_COMMITTER.store(
+          Box::into_raw(Box::new(committer.clone())) as *const Committer as u64,
+          Ordering::Release,
+        );
         match transaction_struct {
             TransactionStructure::Sdk => {
                 let receive_and_buffer = SanitizedTransactionReceiveAndBuffer::new(
