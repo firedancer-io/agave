@@ -4,6 +4,7 @@
 
 #[cfg(feature = "dev-context-only-utils")]
 use qualifier_attr::qualifiers;
+// use solana_poh::poh_recorder;
 use {
     self::{
         committer::Committer, consumer::Consumer, decision_maker::DecisionMaker,
@@ -761,13 +762,16 @@ struct BankingStageContext {
 #[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
 pub(crate) fn update_bank_forks_and_poh_recorder_for_new_tpu_bank(
     bank_forks: &RwLock<BankForks>,
-    poh_controller: &mut PohController,
+    _poh_controller: &mut PohController,
+    poh_recorder: &RwLock<PohRecorder>,
     tpu_bank: Bank,
 ) {
     let tpu_bank = bank_forks.write().unwrap().insert(tpu_bank);
-    if poh_controller.set_bank(tpu_bank).is_err() {
-        warn!("Failed to set poh bank, poh service is disconnected");
-    }
+    // FIREDANCER: do not use poh_controller
+    // if poh_controller.set_bank(tpu_bank).is_err() {
+    //     warn!("Failed to set poh bank, poh service is disconnected");
+    // }
+    poh_recorder.write().unwrap().set_bank(tpu_bank);
 }
 
 #[cfg(test)]
