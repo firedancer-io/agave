@@ -2388,6 +2388,11 @@ fn load_genesis(
     Ok(genesis_config)
 }
 
+unsafe extern "C" {
+    /// FIREDANCER: Notify Firedancer what the blockstore is.
+    fn fd_ext_store_initialize( store: *const std::ffi::c_void, pinnable_slice: *const std::ffi::c_void, write_batch: *const std::ffi::c_void );
+}
+
 #[allow(clippy::type_complexity)]
 fn load_blockstore(
     config: &ValidatorConfig,
@@ -2453,6 +2458,16 @@ fn load_blockstore(
 
         Ok::<_, String>((Arc::new(blockstore), bank_from_snapshot_result.transpose()))
     })?;
+
+    // FIREDANCER: Allocate the long-lived memory the blockstore needs and notify Firedancer of the blockstore.
+    unsafe {
+        fd_ext_store_initialize(
+            Arc::into_raw(Arc::clone(&blockstore)) as *const std::ffi::c_void,
+            Box::into_raw(Box::new(blockstore.new_pinnable_slice())) as *const std::ffi::c_void,
+            Box::into_raw(Box::new(blockstore.get_write_batch().unwrap()))
+                as *const std::ffi::c_void,
+        )
+    }
 
     // following boot sequence (esp BankForks) could set root. so stash the original value
     // of blockstore root away here as soon as possible.
