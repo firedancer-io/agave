@@ -1,5 +1,6 @@
 use {
-    crate::poh_recorder::{PohRecorderError, Record, Result},
+    crate::poh_recorder::{PohRecorderError, Record},
+    crate::old_poh_recorder::Result,
     crossbeam_channel::{bounded, RecvTimeoutError, Sender},
     solana_clock::Slot,
     solana_entry::entry::hash_transactions,
