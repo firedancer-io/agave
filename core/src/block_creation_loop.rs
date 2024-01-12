@@ -1,3 +1,4 @@
+#![allow(unused)]
 //! The block creation loop
 //! When our leader window is reached, attempts to create our leader blocks
 //! within the block timeouts. Responsible for inserting empty banks for

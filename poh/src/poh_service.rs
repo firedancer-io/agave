@@ -5,7 +5,7 @@ use agave_cpu_utils::{CpuId, set_cpu_affinity};
 use {
     crate::{
         poh_controller::{PohServiceMessage, PohServiceMessageGuard, PohServiceMessageReceiver},
-        poh_recorder::{PohRecorder, Record},
+        old_poh_recorder::{PohRecorder, Record},
         record_channels::RecordReceiver,
     },
     agave_votor_messages::migration::MigrationStatus,
