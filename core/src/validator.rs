@@ -29,6 +29,8 @@ use {
         },
         tpu::{Tpu, TpuSockets},
         tvu::{AlpenglowInitializationState, Tvu, TvuConfig, TvuSockets},
+        // FIREDANCER: Defines reward_votes_sender capacity
+        tvu::MAX_ALPENGLOW_PACKET_NUM,
     },
     agave_snapshots::{
         SnapshotInterval, snapshot_archive_info::SnapshotArchiveInfoGetter as _,
@@ -661,8 +663,9 @@ pub struct Validator {
     completed_data_sets_service: Option<CompletedDataSetsService>,
     snapshot_packager_service: SnapshotPackagerService,
     poh_recorder: Arc<RwLock<PohRecorder>>,
-    poh_service: PohService,
-    block_creation_loop: BlockCreationLoop,
+    // FIREDANCER: PoH service is owned by Firedancer.
+    // poh_service: PohService,
+    // block_creation_loop: BlockCreationLoop,
     tpu: Tpu,
     tvu: Tvu,
     ip_echo_server: Option<solana_net_utils::IpEchoServer>,
@@ -1080,10 +1083,10 @@ impl Validator {
                 exit.clone(),
             )
         };
-        let (record_sender, record_receiver) = record_channels(transaction_status_sender.is_some());
+        let (record_sender, _record_receiver) = record_channels(transaction_status_sender.is_some());
         let transaction_recorder = TransactionRecorder::new(record_sender);
         let poh_recorder = Arc::new(RwLock::new(poh_recorder));
-        let (poh_controller, poh_service_message_receiver) = PohController::new();
+        let (poh_controller, _poh_service_message_receiver) = PohController::new();
         let (bank_forks_controller, bank_forks_controller_receiver) =
             BankForksControllerHandle::new();
         let bank_forks_controller = Arc::new(bank_forks_controller);
@@ -1516,26 +1519,30 @@ impl Validator {
         let wait_for_vote_to_start_leader =
             !waited_for_supermajority && !config.no_wait_for_vote_to_start_leader;
 
-        // Pass RecordReceiver from PohService to BlockCreationLoop when shutting down. Gives us a strong guarentee
-        // that both block producers are not running at the same time
-        let (record_receiver_sender, record_receiver_receiver) = bounded(1);
-        // Sender for notifications about our leader window. We allow for a maximum of 7 leader windows in case we have
-        // consecutive leader windows and are slow. There is an early give up if our leader window is skipped because we
-        // are too slow, so in practice this channel should never be full.
-        let (leader_window_info_sender, leader_window_info_receiver) = bounded(7);
+        // FIREDANCER: PoH service and BlockCreationLoop are owned by Firedancer.
+        let _: PohService; /* Silence unused type warnings */
+        let _: BlockCreationLoop;
+        let _: BlockCreationLoopConfig;
+        // // Pass RecordReceiver from PohService to BlockCreationLoop when shutting down. Gives us a strong guarentee
+        // // that both block producers are not running at the same time
+        // let (record_receiver_sender, record_receiver_receiver) = bounded(1);
+        // // Sender for notifications about our leader window. We allow for a maximum of 7 leader windows in case we have
+        // // consecutive leader windows and are slow. There is an early give up if our leader window is skipped because we
+        // // are too slow, so in practice this channel should never be full.
+        let (leader_window_info_sender, _leader_window_info_receiver) = bounded(7);
 
-        let poh_service = PohService::new(
-            poh_recorder.clone(),
-            &genesis_config.poh_config,
-            exit.clone(),
-            bank_forks.read().unwrap().root_bank().ticks_per_slot(),
-            config.poh_pinned_cpu_core,
-            config.poh_hashes_per_batch,
-            record_receiver,
-            poh_service_message_receiver,
-            migration_status.clone(),
-            record_receiver_sender,
-        );
+        // let poh_service = PohService::new(
+        //     poh_recorder.clone(),
+        //     &genesis_config.poh_config,
+        //     exit.clone(),
+        //     bank_forks.read().unwrap().root_bank().ticks_per_slot(),
+        //     config.poh_pinned_cpu_core,
+        //     config.poh_hashes_per_batch,
+        //     record_receiver,
+        //     poh_service_message_receiver,
+        //     migration_status.clone(),
+        //     record_receiver_sender,
+        // );
 
         let replay_highest_frozen = Arc::new(ReplayHighestFrozen::default());
         let highest_parent_ready = Arc::new(RwLock::default());
@@ -1548,28 +1555,33 @@ impl Validator {
 
         let banking_stage_sender_for_bcl = banking_tracer_channels.non_vote_sender.clone();
 
-        let block_creation_loop_config = BlockCreationLoopConfig {
-            exit: exit.clone(),
-            bank_forks: bank_forks.clone(),
-            bank_forks_controller: bank_forks_controller.clone(),
-            blockstore: blockstore.clone(),
-            cluster_info: cluster_info.clone(),
-            poh_recorder: poh_recorder.clone(),
-            leader_schedule_cache: leader_schedule_cache.clone(),
-            rpc_subscriptions: rpc_subscriptions.clone(),
-            banking_tracer: banking_tracer.clone(),
-            slot_status_notifier: slot_status_notifier.clone(),
-            leader_window_info_receiver,
-            highest_parent_ready: highest_parent_ready.clone(),
-            replay_highest_frozen: replay_highest_frozen.clone(),
-            record_receiver_receiver,
-            optimistic_parent_receiver: optimistic_parent_receiver.clone(),
-            highest_finalized: highest_finalized.clone(),
-            banking_stage_sender: banking_stage_sender_for_bcl,
-            sharable_banks: bank_forks.read().unwrap().sharable_banks(),
-        };
-        let (block_creation_loop, reward_votes_sender) =
-            BlockCreationLoop::new(block_creation_loop_config);
+        // FIREDANCER: Frankendancer does not support Alpenglow; this only
+        // keeps reward_votes_sender's receiver alive so the BLS sigverify
+        // service does not observe a disconnected channel at construction.
+        let (reward_votes_sender, _reward_votes_receiver) = bounded(MAX_ALPENGLOW_PACKET_NUM);
+        let _ = &banking_stage_sender_for_bcl;
+        // let block_creation_loop_config = BlockCreationLoopConfig {
+        //     exit: exit.clone(),
+        //     bank_forks: bank_forks.clone(),
+        //     bank_forks_controller: bank_forks_controller.clone(),
+        //     blockstore: blockstore.clone(),
+        //     cluster_info: cluster_info.clone(),
+        //     poh_recorder: poh_recorder.clone(),
+        //     leader_schedule_cache: leader_schedule_cache.clone(),
+        //     rpc_subscriptions: rpc_subscriptions.clone(),
+        //     banking_tracer: banking_tracer.clone(),
+        //     slot_status_notifier: slot_status_notifier.clone(),
+        //     leader_window_info_receiver,
+        //     highest_parent_ready: highest_parent_ready.clone(),
+        //     replay_highest_frozen: replay_highest_frozen.clone(),
+        //     record_receiver_receiver,
+        //     optimistic_parent_receiver: optimistic_parent_receiver.clone(),
+        //     highest_finalized: highest_finalized.clone(),
+        //     banking_stage_sender: banking_stage_sender_for_bcl,
+        //     sharable_banks: bank_forks.read().unwrap().sharable_banks(),
+        // };
+        // let (block_creation_loop, reward_votes_sender) =
+        //     BlockCreationLoop::new(block_creation_loop_config);
 
         assert_eq!(
             blockstore.get_new_shred_signals_len(),
@@ -1829,8 +1841,9 @@ impl Validator {
             completed_data_sets_service,
             tpu,
             tvu,
-            poh_service,
-            block_creation_loop,
+            // FIREDANCER: PoH service is owned by Firedancer.
+            // poh_service,
+            // block_creation_loop,
             poh_recorder,
             ip_echo_server,
             validator_exit: config.validator_exit.clone(),
@@ -1936,10 +1949,13 @@ impl Validator {
         drop(self.bank_forks);
         drop(self.cluster_info);
 
-        self.poh_service.join().expect("poh_service");
-        self.block_creation_loop
-            .join()
-            .expect("block_creation_loop");
+        // FIREDANCER: PoH service and recorder are owned by Firedancer.
+        // The Firedancer PoH service never exits.
+        // self.poh_service.join().expect("poh_service");
+        // self.block_creation_loop
+        //     .join()
+        //     .expect("block_creation_loop");
+        loop { if false { break; } thread::sleep(Duration::from_secs(60) ) }
         drop(self.poh_recorder);
 
         if let Some(json_rpc_service) = self.json_rpc_service {
