@@ -5266,6 +5266,37 @@ impl Bank {
         self.slot_params_at_slot(slot).max_code_shreds_per_slot()
     }
 
+    /// FIREDANCER: Returns the shred slot limits that are in effect
+    /// for the current slot time regime. Returns 5 numbers:
+    /// - The max shred index for the previous slot time regime
+    /// - The max shred index for the current slot time regime
+    /// - The max shred index for the next slot time regime
+    /// - The slot at which the current slot time regime took effect
+    /// - The slot at which the next slot time regime will take effect
+    pub fn shred_slot_limits(&self, slot: Slot) -> [u64; 5] {
+        // Find the start slots at which the current and next slot
+        // params took effect. We use these in the shred tile to
+        // correctly apply per-shred limits to each received shred.
+        let mut current_start_slot = 0u64;
+        let mut next_start_slot = u64::MAX;
+        for (effective_slot, _params) in self.slot_params.param_transitions() {
+            if effective_slot <= slot {
+                current_start_slot = effective_slot;
+            } else {
+                next_start_slot = effective_slot;
+                break;
+            }
+        }
+
+        [
+            self.max_data_shreds_per_slot_for_slot(current_start_slot.saturating_sub(1)) as u64,
+            self.max_data_shreds_per_slot_for_slot(slot) as u64,
+            self.max_data_shreds_per_slot_for_slot(next_start_slot) as u64,
+            current_start_slot,
+            next_start_slot,
+        ]
+    }
+
     pub fn max_entry_bytes_per_slot(&self) -> u64 {
         self.entry_bytes_budget().slot_limit()
     }
