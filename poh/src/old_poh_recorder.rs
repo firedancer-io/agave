@@ -982,7 +982,7 @@ pub fn create_test_recorder_with_index_tracking(
 /// Wrapper around an arc-swapped bank that prevents modifying outside
 /// of `PohRecorder`.
 #[derive(Clone)]
-pub struct SharedWorkingBank(Arc<ArcSwapOption<Bank>>);
+pub struct SharedWorkingBank(pub Arc<ArcSwapOption<Bank>>);
 
 impl SharedWorkingBank {
     pub fn load(&self) -> Option<Arc<Bank>> {
@@ -1006,7 +1006,7 @@ impl SharedWorkingBank {
     }
 
     #[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
-    fn empty() -> Self {
+    pub fn empty() -> Self {
         Self(Arc::new(ArcSwapOption::empty()))
     }
 }
@@ -1022,7 +1022,7 @@ impl SharedTickHeight {
     }
 
     #[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
-    fn new(tick_height: u64) -> Self {
+    pub fn new(tick_height: u64) -> Self {
         Self(Arc::new(AtomicU64::new(tick_height)))
     }
 
@@ -1061,7 +1061,7 @@ impl SharedLeaderFirstTickHeight {
     }
 
     #[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
-    fn new(tick_height: Option<u64>) -> Self {
+    pub fn new(tick_height: Option<u64>) -> Self {
         let v = tick_height.unwrap_or(SHARED_LEADER_FIRST_TICK_HEIGHT_NONE);
         Self(Arc::new(AtomicU64::new(v)))
     }
