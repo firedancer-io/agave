@@ -483,6 +483,13 @@ impl BankingStage {
         scheduler_config: SchedulerConfig,
         context: &BankingStageContext,
     ) {
+        // FIREDANCER: The Firedancer PoH tile needs access to a Committer object
+        // to reuse the code in there for committing transactions. We just store
+        // one in a global here on boot.
+        committer::FIREDANCER_COMMITTER.store(
+          Box::into_raw(Box::new(context.committer.clone())) as *const Committer as u64,
+          Ordering::Release,
+        );
         assert!(num_workers <= BankingStage::max_num_workers());
         let num_workers = num_workers.get();
 
