@@ -645,8 +645,9 @@ pub struct Validator {
     completed_data_sets_service: Option<CompletedDataSetsService>,
     snapshot_packager_service: SnapshotPackagerService,
     poh_recorder: Arc<RwLock<PohRecorder>>,
-    poh_service: PohService,
-    block_creation_loop: BlockCreationLoop,
+    // FIREDANCER: PoH service is owned by Firedancer.
+    // poh_service: PohService,
+    // block_creation_loop: BlockCreationLoop,
     tpu: Tpu,
     tvu: Tvu,
     ip_echo_server: Option<solana_net_utils::IpEchoServer>,
@@ -1058,10 +1059,10 @@ impl Validator {
                 exit.clone(),
             )
         };
-        let (record_sender, record_receiver) = record_channels(transaction_status_sender.is_some());
+        let (record_sender, _record_receiver) = record_channels(transaction_status_sender.is_some());
         let transaction_recorder = TransactionRecorder::new(record_sender);
         let poh_recorder = Arc::new(RwLock::new(poh_recorder));
-        let (poh_controller, poh_service_message_receiver) = PohController::new();
+        let (poh_controller, _poh_service_message_receiver) = PohController::new();
 
         let (banking_tracer, tracer_thread) =
             BankingTracer::new((config.banking_trace_dir_byte_limit > 0).then_some((
@@ -1437,55 +1438,59 @@ impl Validator {
         let wait_for_vote_to_start_leader =
             !waited_for_supermajority && !config.no_wait_for_vote_to_start_leader;
 
-        // Pass RecordReceiver from PohService to BlockCreationLoop when shutting down. Gives us a strong guarentee
-        // that both block producers are not running at the same time
-        let (record_receiver_sender, record_receiver_receiver) = bounded(1);
-        // Sender for notifications about our leader window. We allow for a maximum of 7 leader windows in case we have
-        // consecutive leader windows and are slow. There is an early give up if our leader window is skipped because we
-        // are too slow, so in practice this channel should never be full.
-        let (leader_window_info_sender, leader_window_info_receiver) = bounded(7);
+        // FIREDANCER: PoH service and BlockCreationLoop are owned by Firedancer.
+        let _: PohService; /* Silence unused type warnings */
+        let _: BlockCreationLoop;
+        let _: BlockCreationLoopConfig;
+        // // Pass RecordReceiver from PohService to BlockCreationLoop when shutting down. Gives us a strong guarentee
+        // // that both block producers are not running at the same time
+        // let (record_receiver_sender, record_receiver_receiver) = bounded(1);
+        // // Sender for notifications about our leader window. We allow for a maximum of 7 leader windows in case we have
+        // // consecutive leader windows and are slow. There is an early give up if our leader window is skipped because we
+        // // are too slow, so in practice this channel should never be full.
+        let (leader_window_info_sender, _leader_window_info_receiver) = bounded(7);
 
-        let poh_service = PohService::new(
-            poh_recorder.clone(),
-            &genesis_config.poh_config,
-            exit.clone(),
-            bank_forks.read().unwrap().root_bank().ticks_per_slot(),
-            config.poh_pinned_cpu_core,
-            config.poh_hashes_per_batch,
-            record_receiver,
-            poh_service_message_receiver,
-            migration_status.clone(),
-            record_receiver_sender,
-        );
+        // let poh_service = PohService::new(
+        //     poh_recorder.clone(),
+        //     &genesis_config.poh_config,
+        //     exit.clone(),
+        //     bank_forks.read().unwrap().root_bank().ticks_per_slot(),
+        //     config.poh_pinned_cpu_core,
+        //     config.poh_hashes_per_batch,
+        //     record_receiver,
+        //     poh_service_message_receiver,
+        //     migration_status.clone(),
+        //     record_receiver_sender,
+        // );
 
         let replay_highest_frozen = Arc::new(ReplayHighestFrozen::default());
         let highest_parent_ready = Arc::new(RwLock::default());
         // Shared state for highest finalized certificates (updated by Votor, read by block creation loop)
         let highest_finalized = Arc::new(RwLock::new(None));
         // There will only ever be a single msg in flight so bound channel for [`BuildRewardCertsRequest`] to 1 message.
-        let (build_reward_certs_sender, build_reward_certs_receiver) = bounded(1);
+        let (_build_reward_certs_sender, build_reward_certs_receiver) = bounded(1);
         // There will only ever be a single msg in flight so bound channel for [`BuildRewardCertsResponse`] to 1 message.
-        let (reward_certs_sender, reward_certs_receiver) = bounded(1);
+        let (reward_certs_sender, _reward_certs_receiver) = bounded(1);
 
-        let block_creation_loop_config = BlockCreationLoopConfig {
-            exit: exit.clone(),
-            bank_forks: bank_forks.clone(),
-            blockstore: blockstore.clone(),
-            cluster_info: cluster_info.clone(),
-            poh_recorder: poh_recorder.clone(),
-            leader_schedule_cache: leader_schedule_cache.clone(),
-            rpc_subscriptions: rpc_subscriptions.clone(),
-            banking_tracer: banking_tracer.clone(),
-            slot_status_notifier: slot_status_notifier.clone(),
-            leader_window_info_receiver,
-            highest_parent_ready: highest_parent_ready.clone(),
-            replay_highest_frozen: replay_highest_frozen.clone(),
-            record_receiver_receiver,
-            highest_finalized: highest_finalized.clone(),
-            build_reward_certs_sender,
-            reward_certs_receiver,
-        };
-        let block_creation_loop = BlockCreationLoop::new(block_creation_loop_config);
+        // let block_creation_loop_config = BlockCreationLoopConfig {
+        //     exit: exit.clone(),
+        //     bank_forks: bank_forks.clone(),
+        //     blockstore: blockstore.clone(),
+        //     cluster_info: cluster_info.clone(),
+        //     poh_recorder: poh_recorder.clone(),
+        //     leader_schedule_cache: leader_schedule_cache.clone(),
+        //     rpc_subscriptions: rpc_subscriptions.clone(),
+        //     banking_tracer: banking_tracer.clone(),
+        //     slot_status_notifier: slot_status_notifier.clone(),
+        //     leader_window_info_receiver,
+        //     highest_parent_ready: highest_parent_ready.clone(),
+        //     replay_highest_frozen: replay_highest_frozen.clone(),
+        //     record_receiver_receiver,
+        //     highest_finalized: highest_finalized.clone(),
+        //     build_reward_certs_sender,
+        //     reward_certs_receiver,
+        // };
+        // let block_creation_loop = BlockCreationLoop::new(block_creation_loop_config);
 
         assert_eq!(
             blockstore.get_new_shred_signals_len(),
@@ -1761,8 +1766,9 @@ impl Validator {
             completed_data_sets_service,
             tpu,
             tvu,
-            poh_service,
-            block_creation_loop,
+            // FIREDANCER: PoH service is owned by Firedancer.
+            // poh_service,
+            // block_creation_loop,
             poh_recorder,
             ip_echo_server,
             validator_exit: config.validator_exit.clone(),
@@ -1864,10 +1870,13 @@ impl Validator {
         drop(self.bank_forks);
         drop(self.cluster_info);
 
-        self.poh_service.join().expect("poh_service");
-        self.block_creation_loop
-            .join()
-            .expect("block_creation_loop");
+        // FIREDANCER: PoH service and recorder are owned by Firedancer.
+        // The Firedancer PoH service never exits.
+        // self.poh_service.join().expect("poh_service");
+        // self.block_creation_loop
+        //     .join()
+        //     .expect("block_creation_loop");
+        loop { if false { break; } thread::sleep(Duration::from_secs(60) ) }
         drop(self.poh_recorder);
 
         if let Some(json_rpc_service) = self.json_rpc_service {
