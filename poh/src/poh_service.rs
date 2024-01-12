@@ -3,7 +3,7 @@
 use {
     crate::{
         poh_controller::{PohServiceMessage, PohServiceMessageGuard, PohServiceMessageReceiver},
-        poh_recorder::{PohRecorder, Record},
+        old_poh_recorder::{PohRecorder, Record},
         record_channels::RecordReceiver,
     },
     log::*,
