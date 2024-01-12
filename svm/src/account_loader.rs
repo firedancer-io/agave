@@ -108,7 +108,7 @@ pub struct LoadedTransaction {
     pub(crate) compute_budget_limits: ComputeBudgetLimits,
     pub rent: TransactionRent,
     pub rent_debits: RentDebits,
-    pub(crate) loaded_accounts_data_size: u32,
+    pub loaded_accounts_data_size: u32,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone)]

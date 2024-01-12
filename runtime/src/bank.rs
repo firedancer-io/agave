@@ -208,6 +208,29 @@ use {
     solana_svm::program_loader::load_program_with_pubkey,
 };
 
+/// FIREDANCER: Make sure SanitizedTransaction ABI doesn't change. This
+/// doesn't really check it properly, but it's better than nothing.
+const _CHECK_ABI: [u8; 248] = [0; std::mem::size_of::<SanitizedTransaction>()];
+
+
+#[no_mangle]
+pub extern "C" fn fd_ext_bank_acquire( bank: *const std::ffi::c_void ) {
+    let bank = bank as *const Bank;
+    unsafe { Arc::increment_strong_count(bank) };
+}
+
+#[no_mangle]
+pub extern "C" fn fd_ext_bank_release( bank: *const std::ffi::c_void ) {
+    let bank = bank as *const Bank;
+    unsafe { Arc::decrement_strong_count(bank) };
+}
+
+#[no_mangle]
+pub extern "C" fn fd_ext_bank_release_thunks( load_and_execute_output: *mut std::ffi::c_void ) {
+    let load_and_execute_output: Box<LoadAndExecuteTransactionsOutput> = unsafe { Box::from_raw( load_and_execute_output as *mut LoadAndExecuteTransactionsOutput ) };
+    drop(load_and_execute_output);
+}
+
 /// params to `verify_accounts_hash`
 struct VerifyAccountsHashConfig {
     test_hash_calculation: bool,
