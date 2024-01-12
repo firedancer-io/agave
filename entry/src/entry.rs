@@ -53,7 +53,8 @@ fn init(name: &OsStr) {
 
         match unsafe { Container::load(lib_name) } {
             Ok(api) => _ = API.set(api),
-            Err(err) => error!("Unable to load {lib_name:?}: {err}"),
+            // FIREDANCER: reduce error to warning if it fails to load libpoh-simd.so
+            Err(err) => warn!("Unable to load {lib_name:?}: {err}"),
         }
     })
 }
