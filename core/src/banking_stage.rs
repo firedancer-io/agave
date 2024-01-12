@@ -458,6 +458,17 @@ impl BankingStage {
         prioritization_fee_cache: &Arc<PrioritizationFeeCache>,
     ) -> Self {
         assert!(num_threads >= MIN_TOTAL_THREADS);
+        // FIREDANCER: The Firedancer PoH tile needs access to a Committer object
+        // to reuse the code in there for committing transactions. We just store
+        // one in a global here on boot.
+        committer::FIREDANCER_COMMITTER.store(
+          Box::into_raw(Box::new(Committer::new(
+              transaction_status_sender.clone(),
+              replay_vote_sender.clone(),
+              prioritization_fee_cache.clone(),
+          ))) as *const Committer as u64,
+          Ordering::Release,
+      );
         let vote_storage = {
             let bank = bank_forks.read().unwrap().working_bank();
             VoteStorage::new(&bank)
