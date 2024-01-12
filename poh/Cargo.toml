@@ -27,11 +27,13 @@ shuttle-test = ["dep:shuttle"]
 agave-cpu-utils = { workspace = true }
 agave-votor-messages = { workspace = true }
 arc-swap = { workspace = true }
+agave-feature-set = { workspace = true }
 crossbeam-channel = { workspace = true }
 log = { workspace = true }
 qualifier_attr = { workspace = true }
 shuttle = { workspace = true, optional = true }
 solana-clock = { workspace = true }
+solana-cost-model = { workspace = true }
 solana-entry = { workspace = true }
 solana-hash = { workspace = true }
 solana-leader-schedule = { workspace = true }
