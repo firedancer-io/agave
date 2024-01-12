@@ -9599,6 +9599,7 @@ dependencies = [
 name = "solana-poh"
 version = "3.1.6"
 dependencies = [
+ "agave-feature-set",
  "agave-logger",
  "arc-swap",
  "assert_matches",
@@ -9611,6 +9612,7 @@ dependencies = [
  "rand 0.8.5",
  "shuttle",
  "solana-clock",
+ "solana-cost-model",
  "solana-entry",
  "solana-hash 3.1.0",
  "solana-keypair",
