@@ -25,6 +25,227 @@ use {
     std::{collections::HashMap, sync::Arc},
 };
 
+pub(crate) static FIREDANCER_COMMITTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+use solana_sdk::transaction::TransactionError;
+fn transaction_error_to_code(err: &TransactionError) -> i32 {
+    match err {
+        TransactionError::AccountInUse => 1,
+        TransactionError::AccountLoadedTwice => 2,
+        TransactionError::AccountNotFound => 3,
+        TransactionError::ProgramAccountNotFound => 4,
+        TransactionError::InsufficientFundsForFee => 5,
+        TransactionError::InvalidAccountForFee => 6,
+        TransactionError::AlreadyProcessed => 7,
+        TransactionError::BlockhashNotFound => 8,
+        TransactionError::InstructionError(_, _) => 9,
+        TransactionError::CallChainTooDeep => 10,
+        TransactionError::MissingSignatureForFee => 11,
+        TransactionError::InvalidAccountIndex => 12,
+        TransactionError::SignatureFailure => 13,
+        TransactionError::InvalidProgramForExecution => 14,
+        TransactionError::SanitizeFailure => 15,
+        TransactionError::ClusterMaintenance => 16,
+        TransactionError::AccountBorrowOutstanding => 17,
+        TransactionError::WouldExceedMaxBlockCostLimit => 18,
+        TransactionError::UnsupportedVersion => 19,
+        TransactionError::InvalidWritableAccount => 20,
+        TransactionError::WouldExceedMaxAccountCostLimit => 21,
+        TransactionError::WouldExceedAccountDataBlockLimit => 22,
+        TransactionError::TooManyAccountLocks => 23,
+        TransactionError::AddressLookupTableNotFound => 24,
+        TransactionError::InvalidAddressLookupTableOwner => 25,
+        TransactionError::InvalidAddressLookupTableData => 26,
+        TransactionError::InvalidAddressLookupTableIndex => 27,
+        TransactionError::InvalidRentPayingAccount => 28,
+        TransactionError::WouldExceedMaxVoteCostLimit => 29,
+        TransactionError::WouldExceedAccountDataTotalLimit => 30,
+        TransactionError::DuplicateInstruction(_) => 31,
+        TransactionError::InsufficientFundsForRent { .. } => 32,
+        TransactionError::MaxLoadedAccountsDataSizeExceeded => 33,
+        TransactionError::InvalidLoadedAccountsDataSizeLimit => 34,
+        TransactionError::ResanitizationNeeded => 35,
+        TransactionError::ProgramExecutionTemporarilyRestricted { .. } => 36,
+        TransactionError::UnbalancedTransaction => 37,
+        TransactionError::ProgramCacheHitMaxLimit => 38,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_void, txns: *const std::ffi::c_void, txn_count: u64, out_processing_result: *mut i32, out_transaction_err: *mut i32, out_consumed_exec_cus: *mut u32, out_consumed_acct_data_cus: *mut u32 ) -> *mut std::ffi::c_void {
+    use solana_timings::ExecuteTimings;
+    use solana_runtime::bank::LoadAndExecuteTransactionsOutput;
+    use solana_runtime::transaction_batch::OwnedOrBorrowed;
+    use solana_sdk::clock::MAX_PROCESSING_AGE;
+    use solana_sdk::transaction::SanitizedTransaction;
+    use solana_svm::transaction_error_metrics::TransactionErrorMetrics;
+    use solana_svm::transaction_processing_result::ProcessedTransaction::{Executed,FeesOnly};
+    use solana_svm::transaction_processor::ExecutionRecordingConfig;
+    use solana_svm::transaction_processor::TransactionProcessingConfig;
+    use solana_cost_model::cost_model::CostModel;
+    use std::sync::atomic::Ordering;
+
+    const FD_BANK_TRANSACTION_LANDED: i32 = 1;
+    const FD_BANK_TRANSACTION_EXECUTED: i32 = 2;
+
+    let txns = unsafe {
+        std::slice::from_raw_parts(txns as *const SanitizedTransaction, txn_count as usize)
+    };
+    let bank = bank as *const Bank;
+    unsafe { Arc::increment_strong_count(bank) };
+    let bank = unsafe { Arc::from_raw( bank as *const Bank ) };
+
+    loop {
+        if FIREDANCER_COMMITTER.load(Ordering::Relaxed) != 0 {
+            break;
+        }
+        std::hint::spin_loop();
+    }
+    let committer: &Committer = unsafe { (FIREDANCER_COMMITTER.load(Ordering::Acquire) as *const Committer).as_ref().unwrap() };
+
+    let lock_results = txns.iter().map(|_| Ok(()) ).collect::<Vec<_>>();
+    let mut batch = TransactionBatch::new(lock_results, bank.as_ref(), OwnedOrBorrowed::Borrowed(txns));
+    batch.set_needs_unlock(false);
+
+    let mut timings = ExecuteTimings::default();
+    let transaction_status_sender_enabled = committer.transaction_status_sender_enabled();
+    let output = bank.load_and_execute_transactions(&batch, MAX_PROCESSING_AGE, &mut timings,
+        &mut TransactionErrorMetrics::default(),
+        TransactionProcessingConfig {
+            account_overrides: None,
+            check_program_modification_slot: bank.check_program_modification_slot(),
+            compute_budget: bank.compute_budget(),
+            log_messages_bytes_limit: None,
+            limit_to_load_programs: false,
+            recording_config: ExecutionRecordingConfig::new_single_setting(transaction_status_sender_enabled),
+            transaction_account_lock_limit: Some(64),
+        }
+    );
+
+    for i in 0..txn_count {
+        let (processing_result, consumed_cus, loaded_accounts_data_cost, transaction_err) =
+            match &output.processing_results[i as usize] {
+                Err(err) => (0, 0u32, 0u32, transaction_error_to_code(&err)),
+                Ok(Executed(tx)) => {
+                    (
+                        FD_BANK_TRANSACTION_LANDED | FD_BANK_TRANSACTION_EXECUTED,
+                        /* Executed CUs must be less than the block CU limit, which is much less
+                           than UINT_MAX, so the cast should be safe */
+                        tx.execution_details.executed_units.try_into().unwrap(),
+                        CostModel::calculate_loaded_accounts_data_size_cost(
+                            tx.loaded_transaction.loaded_accounts_data_size,
+                            &bank.feature_set,
+                        ) as u32,
+                        match &tx.execution_details.status {
+                            Ok(_) => 0,
+                            Err(err) => transaction_error_to_code( &err )
+                        }
+                    )
+                },
+                Ok(FeesOnly(tx)) =>  (
+                    FD_BANK_TRANSACTION_LANDED,
+                    0u32,
+                    CostModel::calculate_loaded_accounts_data_size_cost(
+                        tx.rollback_accounts.data_size() as u32,
+                        &bank.feature_set,
+                    ) as u32,
+                    transaction_error_to_code( &tx.load_error )
+                )
+            };
+        unsafe { *out_processing_result.offset(i as isize) = processing_result };
+        unsafe { *out_transaction_err.offset(i as isize) = transaction_err };
+        unsafe { *out_consumed_exec_cus.offset(i as isize) = consumed_cus };
+        unsafe { *out_consumed_acct_data_cus.offset(i as isize) = loaded_accounts_data_cost };
+    }
+
+    let load_and_execute_output: Box<LoadAndExecuteTransactionsOutput> = Box::new(output);
+    Box::into_raw(load_and_execute_output) as *mut std::ffi::c_void
+}
+
+#[no_mangle]
+pub extern "C" fn fd_ext_bank_pre_balance_info( bank: *const std::ffi::c_void, txns: *const std::ffi::c_void, txn_count: u64 ) -> *mut std::ffi::c_void {
+    use solana_runtime::transaction_batch::OwnedOrBorrowed;
+    use solana_sdk::transaction::SanitizedTransaction;
+    use std::sync::atomic::Ordering;
+
+    let txns = unsafe {
+        std::slice::from_raw_parts(txns as *const SanitizedTransaction, txn_count as usize)
+    };
+    let bank = bank as *const Bank;
+    unsafe { Arc::increment_strong_count(bank) };
+    let bank = unsafe { Arc::from_raw( bank as *const Bank ) };
+
+    let lock_results = txns.iter().map(|_| Ok(()) ).collect::<Vec<_>>();
+    let mut batch = TransactionBatch::new(lock_results, bank.as_ref(), OwnedOrBorrowed::Borrowed(txns));
+    batch.set_needs_unlock(false); /* Accounts not actually locked. */
+
+    loop {
+        if FIREDANCER_COMMITTER.load(Ordering::Relaxed) != 0 {
+            break;
+        }
+        std::hint::spin_loop();
+    }
+    let committer: &Committer = unsafe { (FIREDANCER_COMMITTER.load(Ordering::Acquire) as *const Committer).as_ref().unwrap() };
+
+    let mut pre_balance_info = Box::new(PreBalanceInfo::default());
+    if committer.transaction_status_sender_enabled() {
+        pre_balance_info.native = bank.collect_balances(&batch);
+        pre_balance_info.token =
+            collect_token_balances(&bank, &batch, &mut pre_balance_info.mint_decimals)
+    }
+    Box::into_raw(pre_balance_info) as *mut std::ffi::c_void
+}
+
+#[no_mangle]
+pub extern "C" fn fd_ext_bank_release_pre_balance_info( pre_balance_info: *mut std::ffi::c_void ) {
+    let pre_balance_info = unsafe { Box::from_raw( pre_balance_info as *mut PreBalanceInfo ) };
+    drop(pre_balance_info);
+}
+
+#[no_mangle]
+pub extern "C" fn fd_ext_bank_commit_txns( bank: *const std::ffi::c_void, txns: *const std::ffi::c_void, txn_count: u64, load_and_execute_output: *mut std::ffi::c_void, pre_balance_info: *mut std::ffi::c_void ) {
+    use solana_sdk::transaction::SanitizedTransaction;
+    use solana_runtime::bank::LoadAndExecuteTransactionsOutput;
+    use solana_runtime::transaction_batch::OwnedOrBorrowed;
+    use std::sync::atomic::Ordering;
+
+    let txns = unsafe {
+        std::slice::from_raw_parts(txns as *const SanitizedTransaction, txn_count as usize)
+    };
+    let bank = bank as *const Bank;
+    unsafe { Arc::increment_strong_count(bank) };
+    let bank = unsafe { Arc::from_raw( bank as *const Bank ) };
+
+    let load_and_execute_output: Box<LoadAndExecuteTransactionsOutput> = unsafe { Box::from_raw( load_and_execute_output as *mut LoadAndExecuteTransactionsOutput ) };
+
+    let lock_results = txns.iter().map(|_| Ok(()) ).collect::<Vec<_>>();
+    let mut batch = TransactionBatch::new(lock_results, bank.as_ref(), OwnedOrBorrowed::Borrowed(txns));
+    batch.set_needs_unlock(false); /* Accounts not actually locked. */
+
+    loop {
+        // This isn't strictly necessary because the banking stage has to have
+        // retrieved a committer in order for this function to be called (to get
+        // pre_balance_info), but keep it because we plan on removing
+        // pre_balance_info.
+        if FIREDANCER_COMMITTER.load(Ordering::Relaxed) != 0 {
+            break;
+        }
+        std::hint::spin_loop();
+    }
+    let committer: &Committer = unsafe { (FIREDANCER_COMMITTER.load(Ordering::Acquire) as *const Committer).as_ref().unwrap() };
+    let mut timings = LeaderExecuteAndCommitTimings::default();
+    let mut pre_balance_info = unsafe { Box::from_raw( pre_balance_info as *mut PreBalanceInfo ) };
+
+    let _ = committer.commit_transactions(
+        &batch,
+        load_and_execute_output.processing_results,
+        None,
+        &bank,
+        &mut *pre_balance_info,
+        &mut timings,
+        &load_and_execute_output.processed_counts);
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CommitTransactionDetails {
     Committed {
