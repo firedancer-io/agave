@@ -988,7 +988,7 @@ impl PohRecorder {
 
     // returns (leader_first_tick_height, leader_last_tick_height, grace_ticks) given the next
     //  slot this recorder will lead
-    fn compute_leader_slot_tick_heights(
+    pub fn compute_leader_slot_tick_heights(
         next_leader_slot: Option<(Slot, Slot)>,
         ticks_per_slot: u64,
     ) -> (Option<u64>, u64, u64) {
@@ -1168,11 +1168,11 @@ pub fn create_test_recorder(
 /// determine the current leader status of the
 /// `PohRecorder`.
 #[derive(Clone)]
-pub struct SharedLeaderState(Arc<ArcSwap<LeaderState>>);
+pub struct SharedLeaderState(pub Arc<ArcSwap<LeaderState>>);
 
 impl SharedLeaderState {
     #[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
-    fn new(
+    pub fn new(
         tick_height: u64,
         leader_first_tick_height: Option<u64>,
         next_leader_slot_range: Option<(Slot, Slot)>,
@@ -1191,7 +1191,7 @@ impl SharedLeaderState {
     }
 
     #[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
-    fn store(&mut self, state: Arc<LeaderState>) {
+    pub fn store(&mut self, state: Arc<LeaderState>) {
         self.0.store(state)
     }
 
@@ -1211,7 +1211,7 @@ pub struct LeaderState {
 
 impl LeaderState {
     #[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
-    fn new(
+    pub fn new(
         working_bank: Option<Arc<Bank>>,
         tick_height: u64,
         leader_first_tick_height: Option<u64>,
