@@ -569,6 +569,89 @@ impl ParentInfo {
     }
 }
 
+/// FIREDANCER: Insert shreds received from the shred tile into the blockstore
+#[unsafe(no_mangle)]
+pub extern "C" fn fd_ext_blockstore_insert_shreds(
+    blockstore: *const std::ffi::c_void,
+    shred_cnt: u64,
+    shred_bytes: *const u8,
+    shred_sz: u64,
+    stride: u64,
+    is_trusted: i32,
+) {
+    let blockstore = unsafe { &*(blockstore as *const Blockstore) };
+    let shred_bytes = unsafe {
+        std::slice::from_raw_parts(shred_bytes, (stride * (shred_cnt - 1) + shred_sz) as usize)
+    };
+    let shreds: Vec<_> = (0..shred_cnt)
+        .map(|i| {
+            let shred: &[u8] =
+                &shred_bytes[(stride * i) as usize..(stride * i + shred_sz) as usize];
+            (
+                Cow::Owned(Shred::new_from_serialized_shred(shred.to_vec()).unwrap()),
+                /* is_repaired */ false,
+                BlockLocation::Original,
+            )
+        })
+        .collect();
+
+    /* The unwrap() here is not a mistake or laziness.  We do not expect inserting shreds to fail,
+       and cannot recover if it does.  Solana Labs panics if this happens and Firedancer will as
+       well. */
+    let InsertResults {
+        completed_data_set_infos: _,
+        duplicate_shreds,
+    } = blockstore
+        .do_insert_shreds(
+            shreds,
+            is_trusted != 0,
+            None,
+            &mut BlockstoreInsertionMetrics::default(),
+        )
+        .unwrap();
+
+    for shred in duplicate_shreds {
+        // In normal Agave code, these shreds are sent to the window service which handles them in
+        // run_check_duplicate.  Frankendancer support for duplicate shreds is a bit different.  We
+        // don't send duplicate proofs over gossip (but we do receive them).  The following code is
+        // effectively inlined from the check_duplicate lambda in window_service.rs, with the error
+        // handling inlined from the caller.  We also omit sending anything to consensus via
+        // duplicate_slots_sender.  This means if we've already replayed the block, we'll ignore
+        // equivocating shreds that arrive late.
+        let shred_slot = shred.slot();
+        match shred {
+            PossibleDuplicateShred::LastIndexConflict(_, _)
+            | PossibleDuplicateShred::ErasureConflict(_, _)
+            | PossibleDuplicateShred::MerkleRootConflict(_, _) => (),
+            PossibleDuplicateShred::FixedFECChainedMerkleRootConflict(_slot) => {
+                /* hardcode validate_chained_block_id and validate_chained_block_id_2 to true */
+                if let Err(e) = blockstore.set_dead_slot(shred_slot) {
+                    error!("blockstore error {:?}", e);
+                }
+            }
+            PossibleDuplicateShred::Exists(shred) => {
+                // Unlike the other cases we have to wait until here to decide to handle the duplicate and store
+                // in blockstore. This is because the duplicate could have been part of the same insert batch,
+                // so we wait until the batch has been written.
+
+                if !blockstore.has_duplicate_shreds_in_slot(shred_slot) {
+                    // A duplicate is not already recorded
+                    if let Some(existing_shred_payload) = blockstore.is_shred_duplicate(&shred) {
+                        // actually a duplicate
+                        if let Err(e) = blockstore.store_duplicate_slot(
+                            shred_slot,
+                            existing_shred_payload.clone(),
+                            shred.clone().into_payload(),
+                        ) {
+                            error!("blockstore error {:?}", e);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn banking_trace_path(path: &Path) -> PathBuf {
     path.join("banking_trace")
 }
