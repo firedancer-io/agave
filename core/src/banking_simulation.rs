@@ -67,6 +67,29 @@ use {
     tokio::sync::mpsc,
 };
 
+use std::{ffi::c_void, ptr};
+
+#[unsafe(no_mangle)]
+extern "C" fn fd_ext_poh_initialize(
+    _tick_duration_nanos: u64,
+   _hashcnt_per_tick: u64,
+    _ticks_per_slot: u64,
+    _tick_height: u64,
+    _last_entry_hash: *const u8,
+    _signal_leader_change: *mut c_void ) {}
+
+#[unsafe(no_mangle)]
+extern "C" fn fd_ext_poh_get_leader_after_n_slots( _n: u64, _out_pubkey: *mut u8) -> i32 { 0 }
+
+#[unsafe(no_mangle)]
+extern "C" fn fd_ext_poh_acquire_leader_bank() -> *const c_void { ptr::null() }
+
+#[unsafe(no_mangle)]
+extern "C" fn fd_ext_poh_begin_leader( _bank: *const c_void, _slot: u64, _epoch: u64, _hashcnt_per_tick: u64, _cus_block_limit: u64, _cus_vote_cost_limit: u64, _cus_account_cost_limit: u64 ) {}
+
+#[unsafe(no_mangle)]
+extern "C" fn fd_ext_poh_reset() -> u64 { 0 }
+
 /// This creates a simulated environment around `BankingStage` to produce leader's blocks based on
 /// recorded banking trace events (`TimedTracedEvent`).
 ///
@@ -508,6 +531,7 @@ impl SimulatorLoop {
                 update_bank_forks_and_poh_recorder_for_new_tpu_bank(
                     &self.bank_forks,
                     &mut self.poh_controller,
+                    &self.poh_recorder,
                     new_bank,
                 );
                 // Wait for the controller message to be processed.
@@ -763,8 +787,25 @@ impl BankingSimulator {
         let transaction_recorder = TransactionRecorder::new(record_sender);
         let (poh_controller, poh_service_message_receiver) = PohController::new();
         let (record_receiver_sender, _record_receiver_receiver) = bounded(1);
+        // FIREDANCER: The PoHService is unused and takes the original PoH recorder as the
+        //             argument. This fixes the compilation for agave-ledger-tool but does
+        //             not support the banking simulation functionality correctly.
+        let (old_poh_recorder, _) = solana_poh::old_poh_recorder::PohRecorder::new_with_clear_signal(
+                bank.tick_height(),
+                bank.last_blockhash(),
+                bank.clone(),
+               None,
+                bank.ticks_per_slot(),
+                false,
+                blockstore.clone(),
+                blockstore.get_new_shred_signal(0),
+                &leader_schedule_cache,
+                &genesis_config.poh_config,
+                exit.clone(),
+            );
+        let old_poh_recorder = Arc::new(RwLock::new(old_poh_recorder));
         let poh_service = PohService::new(
-            poh_recorder.clone(),
+            old_poh_recorder.clone(),
             &genesis_config.poh_config,
             exit.clone(),
             bank.ticks_per_slot(),
