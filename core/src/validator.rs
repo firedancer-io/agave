@@ -1428,6 +1428,8 @@ impl Validator {
             should_check_duplicate_instance,
             Some(stats_reporter_sender.clone()),
             exit.clone(),
+            // FIREDANCER: GossipService should  send cluster nodes updates to Firedancer
+            true,
         );
         let serve_repair = {
             let bank_forks_r = bank_forks.read().unwrap();
