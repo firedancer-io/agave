@@ -2725,7 +2725,13 @@ impl Node {
         }
     }
 
-    pub fn new_with_external_ip(pubkey: &Pubkey, config: NodeConfig) -> Node {
+    pub fn new_with_external_ip(
+        pubkey: &Pubkey,
+        config: NodeConfig,
+        // FIREDANCER: The desired TPU port is passed in from the config.toml file
+        // so that it can be configured.
+        firedancer_tpu_port: u16,
+    ) -> Node {
         let NodeConfig {
             gossip_addr,
             port_range,
@@ -2785,11 +2791,12 @@ impl Node {
         )
         .unwrap();
 
-        let (tpu_vote_port, tpu_vote_sockets) =
+        // FIREDANCER: Correct TPU vote  port is managed by Firedancer, so this is unused.
+        let (_tpu_vote_port, tpu_vote_sockets) =
             multi_bind_in_range_with_config(bind_ip_addr, port_range, socket_config_reuseport, 1)
                 .expect("tpu_vote multi_bind");
 
-        let (tpu_vote_quic_port, tpu_vote_quic) =
+        let (_tpu_vote_quic_port, tpu_vote_quic) =
             Self::bind_with_config(bind_ip_addr, port_range, socket_config);
 
         let tpu_vote_quic = bind_more_with_config(
@@ -2830,14 +2837,24 @@ impl Node {
         info.set_gossip((addr, gossip_port)).unwrap();
         info.set_tvu(UDP, (addr, tvu_port)).unwrap();
         info.set_tvu(QUIC, (addr, tvu_quic_port)).unwrap();
-        info.set_tpu(public_tpu_addr.unwrap_or_else(|| SocketAddr::new(addr, tpu_port)))
+        // FIREDANCER: The port we receive transactions on is determined by the Firedancer config,
+        // not whatever port Solana Labs manages to bind.
+        // info.set_tpu(public_tpu_addr.unwrap_or_else(|| SocketAddr::new(addr, tpu_port)))
+        //     .unwrap();
+        // info.set_tpu_forwards(
+        //     public_tpu_forwards_addr.unwrap_or_else(|| SocketAddr::new(addr, tpu_forwards_port)),
+        // )
+        // .unwrap();
+        // info.set_tpu_vote(UDP, (addr, tpu_vote_port)).unwrap();
+        // info.set_tpu_vote(QUIC, (addr, tpu_vote_quic_port)).unwrap();
+        info.set_tpu(public_tpu_addr.unwrap_or_else(|| SocketAddr::new(addr, firedancer_tpu_port)))
             .unwrap();
         info.set_tpu_forwards(
-            public_tpu_forwards_addr.unwrap_or_else(|| SocketAddr::new(addr, tpu_forwards_port)),
+            public_tpu_forwards_addr.unwrap_or_else(|| SocketAddr::new(addr, firedancer_tpu_port)),
         )
         .unwrap();
-        info.set_tpu_vote(UDP, (addr, tpu_vote_port)).unwrap();
-        info.set_tpu_vote(QUIC, (addr, tpu_vote_quic_port)).unwrap();
+        info.set_tpu_vote(UDP, (addr, firedancer_tpu_port)).unwrap();
+        info.set_tpu_vote(QUIC, (addr, firedancer_tpu_port+QUIC_PORT_OFFSET)).unwrap();
         info.set_serve_repair(UDP, (addr, serve_repair_port))
             .unwrap();
         info.set_serve_repair(QUIC, (addr, serve_repair_quic_port))
