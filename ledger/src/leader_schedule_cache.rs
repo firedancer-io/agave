@@ -1,7 +1,7 @@
 use {
     crate::{
         blockstore::Blockstore,
-        leader_schedule::{FixedSchedule, LeaderSchedule},
+        leader_schedule::{FixedSchedule, LeaderSchedule, sort_stakes},
         leader_schedule_utils,
     },
     itertools::Itertools,
@@ -21,6 +21,11 @@ use {
 type CachedSchedules = (HashMap<Epoch, Arc<LeaderSchedule>>, VecDeque<u64>);
 const MAX_SCHEDULES: usize = 10;
 
+// FIREDANCER: Some constants for the number and size of the leader
+// schedules we send across the IPC boundary.
+const FIREDANCER_STAKE_WEIGHT_CNT: u64 = 40_200;
+const FIREDANCER_PACKET_SZ: u64 = 40 + FIREDANCER_STAKE_WEIGHT_CNT * 40;
+
 struct CacheCapacity(usize);
 impl Default for CacheCapacity {
     fn default() -> Self {
@@ -36,20 +41,33 @@ pub struct LeaderScheduleCache {
     max_epoch: RwLock<Epoch>,
     max_schedules: CacheCapacity,
     fixed_schedule: Option<Arc<FixedSchedule>>,
+    // FIREDANCER: Lock for sharing access to tango channel sending
+    // leader schedule updates to interested tiles.
+    firedancer_rwlock: Option<RwLock<()>>,
 }
 
 impl LeaderScheduleCache {
     pub fn new_from_bank(bank: &Bank) -> Self {
-        Self::new(bank.epoch_schedule().clone(), bank)
+        // FIREDANCER: No need to send leader schedule updates from this path
+        Self::new(bank.epoch_schedule().clone(), bank, false)
     }
 
-    pub fn new(epoch_schedule: EpochSchedule, root_bank: &Bank) -> Self {
-        let cache = Self {
+    // FIREDANCER: Whether we need to send leader schedule updates to Firedancer
+    pub fn new(epoch_schedule: EpochSchedule, root_bank: &Bank, firedancer_send: bool) -> Self {
+        // FIREDANCER: Whether we need to send leader schedule updates to Firedancer
+        let firedancer_rwlock = if firedancer_send {
+            Some(RwLock::new(()))
+        } else {
+            None
+        };
+        let mut cache = Self {
             cached_schedules: RwLock::new((HashMap::new(), VecDeque::new())),
             epoch_schedule,
             max_epoch: RwLock::new(0),
             max_schedules: CacheCapacity::default(),
             fixed_schedule: None,
+            // FIREDANCER: Leader schedule will need to be communicated from this path.
+            firedancer_rwlock,
         };
 
         // This sets the root and calculates the schedule at leader_schedule_epoch(root)
@@ -62,6 +80,15 @@ impl LeaderScheduleCache {
         for epoch in 0..leader_schedule_epoch {
             let first_slot_in_epoch = cache.epoch_schedule.get_first_slot_in_epoch(epoch);
             cache.slot_leader_at(first_slot_in_epoch, Some(root_bank));
+        }
+
+        // FIREDANCER: Send the stake weights needed to compute the leader schedule for the current epoch as well.
+        unsafe {
+            Self::firedancer_send_leader_schedule(
+                leader_schedule_epoch - 1,
+                root_bank,
+                &mut cache.firedancer_rwlock,
+            );
         }
         cache
     }
@@ -90,7 +117,9 @@ impl LeaderScheduleCache {
 
         // Calculate the epoch as soon as it's rooted
         if new_max_epoch > old_max_epoch {
-            self.compute_epoch_schedule(new_max_epoch, root_bank);
+            // FIREDANCER: Send this epoch schedule to Firedancer, it's the result of a
+            // new rooted bank at epoch boundary.
+            self.compute_epoch_schedule(new_max_epoch, root_bank, true);
         }
     }
 
@@ -188,7 +217,9 @@ impl LeaderScheduleCache {
             cache_result
         } else {
             let (epoch, slot_index) = bank.get_epoch_and_slot_index(slot);
-            self.compute_epoch_schedule(epoch, bank)
+            // FIREDANCER: Don't send this epoch schedule to Firedancer, it's not the result of a
+            // new rooted bank at epoch boundary.
+            self.compute_epoch_schedule(epoch, bank, false)
                 .map(|epoch_schedule| epoch_schedule[slot_index])
         }
     }
@@ -209,11 +240,20 @@ impl LeaderScheduleCache {
         if epoch_schedule.is_some() {
             epoch_schedule
         } else {
-            self.compute_epoch_schedule(epoch, bank)
+            // FIREDANCER: Don't send this epoch schedule to Firedancer, it's not the result of a
+            // new rooted bank at epoch boundary.
+            self.compute_epoch_schedule(epoch, bank, false)
         }
     }
 
-    fn compute_epoch_schedule(&self, epoch: Epoch, bank: &Bank) -> Option<Arc<LeaderSchedule>> {
+    /// FIREDANCER: Add rooted argument, we only send computed epoch schedules to Firedancer for
+    /// banks that are rooted.
+    fn compute_epoch_schedule(
+        &self,
+        epoch: Epoch,
+        bank: &Bank,
+        rooted: bool,
+    ) -> Option<Arc<LeaderSchedule>> {
         let leader_schedule = leader_schedule_utils::leader_schedule(epoch, bank);
         leader_schedule.map(|leader_schedule| {
             let leader_schedule = Arc::new(leader_schedule);
@@ -226,8 +266,67 @@ impl LeaderScheduleCache {
                 order.push_back(epoch);
                 Self::retain_latest(cached_schedules, order, self.max_schedules());
             }
+            // FIREDANCER: New leader schedule has been computed, ensure that
+            // we communicate the stake weights used to generate it so that
+            // Firedancer can generate the same leader schedule.  For example,
+            // the pack tile needs this to know when it should start packing
+            // blocks. This call will block until it can send the update.
+            if rooted {
+                unsafe {
+                    Self::firedancer_send_leader_schedule(epoch, bank, &self.firedancer_rwlock);
+                }
+            }
             leader_schedule
         })
+    }
+
+    /// FIREDANCER: Send the stake weights used to compute the leader schedule over the IPC boundary to Firedancer.
+    unsafe fn firedancer_send_leader_schedule(
+        epoch: Epoch,
+        bank: &Bank,
+        send_firedancer: &Option<RwLock<()>>,
+    ) {
+        if let Some(lock) = send_firedancer.as_ref() {
+            let _guard = lock.write().unwrap();
+
+            let (first_slot, slot_cnt) = (
+                bank.epoch_schedule().get_first_slot_in_epoch(epoch),
+                bank.epoch_schedule().get_slots_in_epoch(epoch),
+            );
+            let mut stakes: Vec<(Pubkey, u64)> = bank
+                .epoch_staked_nodes(epoch)
+                .map(|stakes| {
+                    let mut stakes: Vec<_> = stakes
+                        .iter()
+                        .map(|(pubkey, stake)| (pubkey, *stake))
+                        .collect();
+                    sort_stakes(&mut stakes);
+                    stakes.into_iter().map(|(pubkey, stake)| (*pubkey, stake)).collect()
+                })
+                .unwrap();
+
+            let mut memory: [u8; FIREDANCER_PACKET_SZ as usize] =
+                [0; FIREDANCER_PACKET_SZ as usize];
+
+            let remaining_stake: u64 = stakes.iter().skip(FIREDANCER_STAKE_WEIGHT_CNT as usize).map(|&(_, stake)| stake).sum();
+            stakes.truncate(FIREDANCER_STAKE_WEIGHT_CNT as usize);
+
+            memory[0..8].copy_from_slice(&epoch.to_le_bytes());
+            memory[8..16].copy_from_slice(&stakes.len().to_le_bytes());
+            memory[16..24].copy_from_slice(&first_slot.to_le_bytes());
+            memory[24..32].copy_from_slice(&slot_cnt.to_le_bytes());
+            memory[32..40].copy_from_slice(&remaining_stake.to_le_bytes());
+            for (i, (pubkey, stake)) in stakes.iter().enumerate() {
+                let offset = 40 + i * 40;
+                memory[offset..offset + 32].copy_from_slice(&pubkey.to_bytes());
+                memory[offset+32..offset + 40].copy_from_slice(&stake.to_le_bytes());
+            }
+
+            extern "C" {
+                fn fd_ext_poh_publish_leader_schedule(data: *const u8, len: u64);
+            }
+            fd_ext_poh_publish_leader_schedule(memory.as_ptr(), 40 + stakes.len() as u64 * 40);
+        }
     }
 
     fn retain_latest(
