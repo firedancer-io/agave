@@ -1683,6 +1683,16 @@ pub fn app<'a>(version: &'a str, default_args: &'a DefaultArgs) -> App<'a, 'a> {
                     May get stuck if the leader used is different from others.",
                 ),
         )
+        // FIREDANCER: Port number to use for the TPU. This is passed from the Firedancer
+        // config.toml file and then gets wired up to the Solana Labs gossip code so that
+        // the correct port gets broadcast.
+        .arg(
+            Arg::with_name("firedancer_tpu_port")
+                .long("firedancer-tpu-port")
+                .takes_value(true)
+                .validator(is_parsable::<u16>)
+                .help("Port to use for receiving transactions in the TPU."),
+        )
         .args(&thread_args(&default_args.thread_args))
         .args(&get_deprecated_arguments())
         .after_help("The default subcommand is run")
