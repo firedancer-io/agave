@@ -55,6 +55,11 @@ use {
     thiserror::Error,
 };
 
+// FIREDANCER: agave-ledger-tool does not need to use these functions
+// but needs them to be defined for the linker to build the binary.
+#[no_mangle]
+extern "C" fn fd_ext_poh_publish_leader_schedule( _data: *const u8, _len: u64 ) {}
+
 pub struct LoadAndProcessLedgerOutput {
     pub bank_forks: Arc<RwLock<BankForks>>,
     pub starting_snapshot_hashes: Option<StartingSnapshotHashes>,
@@ -346,6 +351,7 @@ pub fn load_and_process_ledger(
             &process_options,
             accounts_update_notifier.clone(),
             exit.clone(),
+            false,
         )
         .transpose()
         .unwrap_or_else(|| {
