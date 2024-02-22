@@ -284,6 +284,7 @@ impl Tpu {
             blockstore.clone(),
             bank_notification_sender,
             duplicate_confirmed_slot_sender,
+            poh_recorder.clone(),
         );
 
         let banking_stage = BankingStage::new_num_threads(
