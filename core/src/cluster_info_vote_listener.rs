@@ -265,7 +265,13 @@ impl ClusterInfoVoteListener {
             if !votes.is_empty() {
                 let (vote_txs, packets) = Self::verify_votes(votes, root_bank_cache);
                 verified_vote_transactions_sender.send(vote_txs)?;
-                verified_packets_sender.send(BankingPacketBatch::new((packets, None)))?;
+                // FIREDANCER: Don't sent gossiped votes to Solana Labs TPU, reroute
+                // them into the Firedancer dedup tile instead.
+                // verified_packets_sender.send(BankingPacketBatch::new((packets, None)))?;
+                let _ = verified_packets_sender;
+                unsafe {
+                    ClusterInfoVoteListener::firedancer_send(packets);
+                }
             }
             sleep(Duration::from_millis(GOSSIP_SLEEP_MILLIS));
         }
@@ -310,6 +316,25 @@ impl ClusterInfoVoteListener {
                 Some((tx, packet_batch))
             })
             .unzip()
+    }
+
+    // FIREDANCER: Send gossiped votes across to the Firedancer dedup tile
+    unsafe fn firedancer_send(
+        votes: Vec<packet::PacketBatch>,
+    ) {
+        // Prevent warnings about unused BankingPacketBatch
+        let _: Option<BankingPacketBatch> = None;
+        for vote in votes {
+            assert!(vote.len() == 1);
+            let txn = &vote[0];
+            let data = txn.data(..).unwrap(); /* discard packets already dropped by now */
+            assert!(data.len() <= 1232);
+
+            extern "C" {
+                fn fd_ext_poh_publish_gossip_vote(data: *const u8, len: usize);
+            }
+            fd_ext_poh_publish_gossip_vote(data.as_ptr(), data.len());
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
