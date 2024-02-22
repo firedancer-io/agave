@@ -168,6 +168,8 @@ fn start_gossip_node(
         should_check_duplicate_instance,
         None,
         gossip_exit_flag.clone(),
+        // FIREDANCER: This gossip service is only used for bootstrap. No need to send to FD.
+        false,
     );
     (cluster_info, gossip_exit_flag, gossip_service)
 }
