@@ -2295,8 +2295,10 @@ fn load_blockstore(
         })
         .map_err(|err| err.to_string())?;
 
+    // FIREDANCER: We want to get leader schedule updates from bank forks.
+    let bank = &bank_forks.read().unwrap().root_bank();
     let mut leader_schedule_cache =
-        LeaderScheduleCache::new_from_bank(&bank_forks.read().unwrap().root_bank());
+        LeaderScheduleCache::new(bank.epoch_schedule().clone(), bank, true);
     leader_schedule_cache.set_fixed_leader_schedule(config.fixed_leader_schedule.clone());
 
     // Before replay starts, set the callbacks in each of the banks in BankForks so that
