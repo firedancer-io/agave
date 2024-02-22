@@ -2603,6 +2603,8 @@ impl ClusterInfo {
         thread_pool: &ThreadPool,
         last_print: &mut Instant,
         should_check_duplicate_instance: bool,
+        // FIREDANCER: Receive channel for communicated cluster contact info after CRDS updates
+        send_firedancer: &mut Option<Instant>,
     ) -> Result<(), GossipError> {
         let _st = ScopedTimer::from(&self.stats.gossip_listen_loop_time);
         const RECV_TIMEOUT: Duration = Duration::from_secs(1);
@@ -2643,10 +2645,55 @@ impl ClusterInfo {
             submit_gossip_stats(&self.stats, &self.gossip, &stakes);
             *last_print = Instant::now();
         }
+        // FIREDANCER: Publish newly received gossip information to Firedancer periodically
+        if let Some(last_update) = send_firedancer {
+            if last_update.elapsed() > Duration::from_secs(5) {
+                unsafe { self.firedancer_send_cluster_nodes() };
+                *last_update = Instant::now();
+            }
+        }
         self.stats
             .gossip_listen_loop_iterations_since_last_report
             .add_relaxed(1);
         Ok(())
+    }
+
+    /// FIREDANCER: Constants for sending cluster nodes over IPC
+    const FIREDANCER_CLUSTER_NODE_CNT: u64 = 200*201 - 1; /* -1 because it doesn't include itself */
+    const FIREDANCER_CLUSTER_NODE_SZ: u64 = 8 + Self::FIREDANCER_CLUSTER_NODE_CNT * 38;
+
+    /// FIREDANCER: Publish current gossiped cluster contact information to Firedancer
+    unsafe fn firedancer_send_cluster_nodes(
+        &self,
+    ) {
+        let peers = self.tvu_peers();
+        if peers.len() > Self::FIREDANCER_CLUSTER_NODE_CNT as usize {
+            warn!("cluster_nodes len {} exceeds max_elements {}", peers.len(), Self::FIREDANCER_CLUSTER_NODE_CNT);
+        }
+
+        let len = usize::min(Self::FIREDANCER_CLUSTER_NODE_CNT as usize, peers.len());
+
+        let mut memory: [u8; Self::FIREDANCER_CLUSTER_NODE_SZ as usize] = [0; Self::FIREDANCER_CLUSTER_NODE_SZ as usize];
+        memory[0..8].copy_from_slice(&len.to_le_bytes());
+
+        for (i, node) in peers.iter().enumerate().take(len) {
+            let pubkey_bytes = node.pubkey().to_bytes();
+            let (ip, port) = if let Ok(SocketAddr::V4(addr)) = node.tvu(solana_client::connection_cache::Protocol::UDP) {
+                (addr.ip().octets(), addr.port())
+            } else {
+                ([0; 4], 0)
+             };
+
+            let offset = 8 + i * 38;
+            memory[offset..offset+32].copy_from_slice(&pubkey_bytes);
+            memory[offset+32..offset+36].copy_from_slice(&ip);
+            memory[offset+36..offset+38].copy_from_slice(&port.to_le_bytes());
+        }
+
+        extern "C" {
+            fn fd_ext_poh_publish_cluster_info(data: *const u8, len: u64);
+        }
+        fd_ext_poh_publish_cluster_info(memory.as_ptr(), 8 + len as u64 * 38);
     }
 
     pub(crate) fn start_socket_consume_thread(
@@ -2684,6 +2731,8 @@ impl ClusterInfo {
         response_sender: PacketBatchSender,
         should_check_duplicate_instance: bool,
         exit: Arc<AtomicBool>,
+        // FIREDANCER: If this gossip service should send updates to Firedancer
+        send_firedancer: bool,
     ) -> JoinHandle<()> {
         let mut last_print = Instant::now();
         let recycler = PacketBatchRecycler::default();
@@ -2695,6 +2744,12 @@ impl ClusterInfo {
         Builder::new()
             .name("solGossipListen".to_string())
             .spawn(move || {
+                // FIREDANCER: We should send a cluster node contact update immediately
+                let mut last_update = if send_firedancer {
+                    Some(Instant::now() - Duration::from_secs(5))
+                } else {
+                    None
+                };
                 while !exit.load(Ordering::Relaxed) {
                     if let Err(err) = self.run_listen(
                         &recycler,
@@ -2704,6 +2759,8 @@ impl ClusterInfo {
                         &thread_pool,
                         &mut last_print,
                         should_check_duplicate_instance,
+                        // FIREDANCER: Send the cluster contact info over the IPC boundary to Firedancer
+                        &mut last_update,
                     ) {
                         match err {
                             GossipError::RecvTimeoutError(RecvTimeoutError::Disconnected) => break,
