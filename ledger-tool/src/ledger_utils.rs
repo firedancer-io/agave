@@ -57,6 +57,11 @@ use {
     thiserror::Error,
 };
 
+// FIREDANCER: agave-ledger-tool does not need to use these functions
+// but needs them to be defined for the linker to build the binary.
+#[no_mangle]
+extern "C" fn fd_ext_poh_publish_leader_schedule( _data: *const u8, _len: u64 ) {}
+
 const PROCESS_SLOTS_HELP_STRING: &str =
     "The starting slot is either the latest found snapshot slot, or genesis (slot 0) if the \
      --no-snapshot flag was specified or if no snapshots were found. \
@@ -283,6 +288,7 @@ pub fn load_and_process_ledger(
             None, // Maybe support this later, though
             accounts_update_notifier,
             exit.clone(),
+            false,
         )
         .map_err(LoadAndProcessLedgerError::LoadBankForks)?;
     let block_verification_method = value_t!(
