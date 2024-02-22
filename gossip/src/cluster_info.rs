@@ -2301,6 +2301,53 @@ impl ClusterInfo {
         Ok(())
     }
 
+    /// FIREDANCER: Constants for sending cluster nodes over IPC
+    const FIREDANCER_CLUSTER_NODE_CNT: u64 = 108_000 - 1; /* -1 because it doesn't include itself */
+    const FIREDANCER_CLUSTER_NODE_SZ: u64 = 8 + Self::FIREDANCER_CLUSTER_NODE_CNT * 46;
+
+    /// FIREDANCER: Publish current gossiped cluster contact information to Firedancer
+    unsafe fn firedancer_send_cluster_nodes(&self) {
+        let peers = self.tvu_peers(ContactInfo::clone);
+        if peers.len() > Self::FIREDANCER_CLUSTER_NODE_CNT as usize {
+            warn!("cluster_nodes len {} exceeds max_elements {}", peers.len(), Self::FIREDANCER_CLUSTER_NODE_CNT);
+        }
+
+        let len = usize::min(Self::FIREDANCER_CLUSTER_NODE_CNT as usize, peers.len());
+
+        let mut memory: Box<[u8; Self::FIREDANCER_CLUSTER_NODE_SZ as usize]> = vec![0u8; Self::FIREDANCER_CLUSTER_NODE_SZ as usize].try_into().unwrap();
+        memory[0..8].copy_from_slice(&len.to_le_bytes());
+
+        for (i, node) in peers.iter().enumerate().take(len) {
+            let pubkey_bytes = node.pubkey().to_bytes();
+            let version = node.version();
+            let client: u16 = u16::try_from(version.client().clone()).unwrap_or(u16::MAX);
+            let major = version.major();
+            let minor = version.minor();
+            let patch = version.patch();
+            let (ip, port) = if let Some(SocketAddr::V4(addr)) = node.tvu(solana_client::connection_cache::Protocol::UDP) {
+                (addr.ip().octets(), addr.port())
+            } else {
+                ([0; 4], 0)
+             };
+
+             let offset = 8 + i * 46;
+             memory[offset..offset+32].copy_from_slice(&pubkey_bytes);
+             memory[offset+32..offset+34].copy_from_slice(&patch.to_le_bytes());
+             memory[offset+34..offset+36].copy_from_slice(&minor.to_le_bytes());
+             memory[offset+36..offset+38].copy_from_slice(&major.to_le_bytes());
+             memory[offset+38..offset+40].copy_from_slice(&client.to_le_bytes());
+             memory[offset+40..offset+44].copy_from_slice(&ip);
+             memory[offset+44..offset+46].copy_from_slice(&port.to_le_bytes());
+        }
+
+        unsafe extern "C" {
+            fn fd_ext_poh_publish_cluster_info(data: *const u8, len: u64);
+        }
+        unsafe {
+            fd_ext_poh_publish_cluster_info(memory.as_ptr(), 8 + len as u64 * 46);
+        }
+    }
+
     pub(crate) fn start_socket_consume_thread(
         self: Arc<Self>,
         mut epoch_specs: Option<Box<dyn EpochSpecs>>,
@@ -2346,6 +2393,8 @@ impl ClusterInfo {
         response_sender: impl ChannelSend<PacketBatch>,
         should_check_duplicate_instance: bool,
         exit: Arc<AtomicBool>,
+        // FIREDANCER: If this gossip service should send updates to Firedancer
+        send_firedancer: bool,
     ) -> JoinHandle<()> {
         let recycler = PacketBatchRecycler::default();
         let thread_pool = ThreadPoolBuilder::new()
@@ -2357,6 +2406,9 @@ impl ClusterInfo {
         Builder::new()
             .name("solGossipListen".to_string())
             .spawn(move || {
+                // FIREDANCER: We should send a cluster node contact update immediately
+                let mut last_update = Instant::now() - Duration::from_secs(5);
+
                 while !exit.load(Ordering::Relaxed) {
                     let result = self.run_listen(
                         &recycler,
@@ -2381,6 +2433,14 @@ impl ClusterInfo {
                                 std::process::exit(1);
                             }
                             _ => error!("gossip run_listen failed: {err}"),
+                        }
+                    }
+
+                    // FIREDANCER: Send the cluster contact info over the IPC boundary to Firedancer
+                    if send_firedancer {
+                        if last_update.elapsed() > Duration::from_secs(5) {
+                            unsafe { self.firedancer_send_cluster_nodes() };
+                            last_update = Instant::now();
                         }
                     }
                 }
