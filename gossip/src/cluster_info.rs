@@ -3096,7 +3096,13 @@ impl Node {
         }
     }
 
-    pub fn new_with_external_ip(pubkey: &Pubkey, config: NodeConfig) -> Node {
+    pub fn new_with_external_ip(
+        pubkey: &Pubkey,
+        config: NodeConfig,
+        // FIREDANCER: The desired TPU port is passed in from the config.toml file
+        // so that it can be configured.
+        firedancer_tpu_port: u16,
+    ) -> Node {
         let NodeConfig {
             gossip_addr,
             port_range,
@@ -3132,7 +3138,8 @@ impl Node {
             ),
         );
 
-        let (tpu_vote_port, tpu_vote_sockets) =
+        // FIREDANCER: Correct TPU vote port is managed by Firedancer, so this is unused.
+        let (_tpu_vote_port, tpu_vote_sockets) =
             multi_bind_in_range(bind_ip_addr, port_range, 1).expect("tpu_vote multi_bind");
 
         let (_, retransmit_sockets) =
@@ -3156,13 +3163,23 @@ impl Node {
         info.set_gossip((addr, gossip_port)).unwrap();
         info.set_tvu((addr, tvu_port)).unwrap();
         info.set_tvu_quic((addr, tvu_quic_port)).unwrap();
-        info.set_tpu(public_tpu_addr.unwrap_or_else(|| SocketAddr::new(addr, tpu_port)))
+        // FIREDANCER: The port we receive transactions on is determined by the Firedancer config,
+        // not whatever port Solana Labs manages to bind.
+        // info.set_tpu(public_tpu_addr.unwrap_or_else(|| SocketAddr::new(addr, tpu_port)))
+        //     .unwrap();
+        // info.set_tpu_forwards(
+        //     public_tpu_forwards_addr.unwrap_or_else(|| SocketAddr::new(addr, tpu_forwards_port)),
+        // )
+        // .unwrap();
+        // info.set_tpu_vote((addr, tpu_vote_port)).unwrap();
+        info.set_tpu(public_tpu_addr.unwrap_or_else(|| SocketAddr::new(addr, firedancer_tpu_port)))
             .unwrap();
         info.set_tpu_forwards(
-            public_tpu_forwards_addr.unwrap_or_else(|| SocketAddr::new(addr, tpu_forwards_port)),
+            public_tpu_forwards_addr.unwrap_or_else(|| SocketAddr::new(addr, firedancer_tpu_port)),
         )
         .unwrap();
-        info.set_tpu_vote((addr, tpu_vote_port)).unwrap();
+        info.set_tpu_vote((addr, firedancer_tpu_port)).unwrap();
+
         info.set_serve_repair((addr, serve_repair_port)).unwrap();
         info.set_serve_repair_quic((addr, serve_repair_quic_port))
             .unwrap();
