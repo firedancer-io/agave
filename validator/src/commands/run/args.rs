@@ -1237,6 +1237,16 @@ pub fn add_args<'a>(app: App<'a, 'a>, default_args: &'a DefaultArgs) -> App<'a, 
             .conflicts_with("no_xdp")
             .help("Enable XDP zero copy mode. Requires hardware and driver support"),
     )
+    // FIREDANCER: Port number to use for the TPU. This is passed from the Firedancer
+    // config.toml file and then gets wired up to the Solana Labs gossip code so that
+    // the correct port gets broadcast.
+    .arg(
+        Arg::with_name("firedancer_tpu_port")
+            .long("firedancer-tpu-port")
+            .takes_value(true)
+            .validator(is_parsable::<u16>)
+            .help("Port to use for receiving transactions in the TPU."),
+    )
     .args(&pub_sub_config::args(/*test_validator:*/ false))
     .args(&json_rpc_config::args())
     .args(&rpc_bigtable_config::args())
