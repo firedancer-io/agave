@@ -1041,7 +1041,7 @@ impl TestValidator {
                 vortexor_receiver_addr: None,
             };
             let mut node =
-                Node::new_with_external_ip(&validator_identity.pubkey(), validator_node_config);
+                Node::new_with_external_ip(&validator_identity.pubkey(), validator_node_config, 9001);
             let (rpc, rpc_pubsub) = config.rpc_ports.unwrap_or_else(|| {
                 let rpc_ports: [u16; 2] =
                     find_available_ports_in_range(bind_ip_addr, config.node_config.port_range)
