@@ -2234,7 +2234,7 @@ impl ClusterInfo {
     }
 
     /// FIREDANCER: Constants for sending cluster nodes over IPC
-    const FIREDANCER_CLUSTER_NODE_CNT: u64 = 200*201 - 1; /* -1 because it doesn't include itself */
+    const FIREDANCER_CLUSTER_NODE_CNT: u64 = 108000 - 1; /* -1 because it doesn't include itself */
     const FIREDANCER_CLUSTER_NODE_SZ: u64 = 8 + Self::FIREDANCER_CLUSTER_NODE_CNT * 46;
 
     /// FIREDANCER: Publish current gossiped cluster contact information to Firedancer
