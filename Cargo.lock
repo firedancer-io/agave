@@ -8816,6 +8816,7 @@ dependencies = [
  "serde_bytes",
  "serial_test",
  "solana-bloom",
+ "solana-client",
  "solana-clock",
  "solana-entry",
  "solana-epoch-schedule",
