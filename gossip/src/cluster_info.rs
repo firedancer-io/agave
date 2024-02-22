@@ -2261,10 +2261,12 @@ impl ClusterInfo {
             memory[offset+36..offset+38].copy_from_slice(&port.to_le_bytes());
         }
 
-        extern "C" {
+        unsafe extern "C" {
             fn fd_ext_poh_publish_cluster_info(data: *const u8, len: u64);
         }
-        fd_ext_poh_publish_cluster_info(memory.as_ptr(), 8 + len as u64 * 38);
+        unsafe {
+            fd_ext_poh_publish_cluster_info(memory.as_ptr(), 8 + len as u64 * 38);
+        }
     }
 
     pub(crate) fn start_socket_consume_thread(
