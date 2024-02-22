@@ -1405,6 +1405,8 @@ impl Validator {
             should_check_duplicate_instance,
             Some(stats_reporter_sender.clone()),
             exit.clone(),
+            // FIREDANCER: GossipService should  send cluster nodes updates to Firedancer
+            true,
         );
         let serve_repair = config.repair_handler_type.create_serve_repair(
             blockstore.clone(),
