@@ -49,8 +49,10 @@ pub enum Error {
     Loopback { leader: Pubkey, shred: ShredId },
 }
 
+// FIREDANCER: This is made public for convenient use by code that sends
+// take weights to Firedancer.
 #[allow(clippy::large_enum_variant)]
-enum NodeId {
+pub enum NodeId {
     // TVU node obtained through gossip (staked or not).
     ContactInfo(ContactInfo),
     // Staked node with no contact-info in gossip table.
@@ -58,15 +60,19 @@ enum NodeId {
 }
 
 pub struct Node {
-    node: NodeId,
-    stake: u64,
+    // FIREDANCER: These are made public for convenient use by code that sends
+    // take weights to Firedancer.
+    pub node: NodeId,
+    pub stake: u64,
 }
 
 pub struct ClusterNodes<T> {
     pubkey: Pubkey, // The local node itself.
     // All staked nodes + other known tvu-peers + the node itself;
     // sorted by (stake, pubkey) in descending order.
-    nodes: Vec<Node>,
+    // FIREDANCER: This is made public for convenient use by code that sends
+    // take weights to Firedancer.
+    pub nodes: Vec<Node>,
     // Reverse index from nodes pubkey to their index in self.nodes.
     index: HashMap<Pubkey, /*index:*/ usize>,
     weighted_shuffle: WeightedShuffle</*stake:*/ u64>,
@@ -453,7 +459,9 @@ impl<T: 'static> ClusterNodesCache<T> {
         }
     }
 
-    pub(crate) fn get(
+    // FIREDANCER: Change visibility to public so we can use this for sending contact
+    // information over IPC.
+    pub fn get(
         &self,
         shred_slot: Slot,
         root_bank: &Bank,

@@ -1142,6 +1142,8 @@ impl Validator {
             should_check_duplicate_instance,
             Some(stats_reporter_sender.clone()),
             exit.clone(),
+            // FIREDANCER: GossipService should  send cluster nodes updates to Firedancer
+            true,
         );
         let serve_repair = ServeRepair::new(
             cluster_info.clone(),
