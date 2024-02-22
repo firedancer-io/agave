@@ -54,6 +54,8 @@ impl GossipService {
         should_check_duplicate_instance: bool,
         stats_reporter_sender: Option<Sender<Box<dyn FnOnce() + Send>>>,
         exit: Arc<AtomicBool>,
+        // FIREDANCER: If this gossip service should send updates to Firedancer
+        send_firedancer: bool,
     ) -> Self {
         let (request_sender, request_receiver) =
             EvictingSender::new_bounded(GOSSIP_CHANNEL_CAPACITY);
@@ -94,6 +96,8 @@ impl GossipService {
             response_sender.clone(),
             should_check_duplicate_instance,
             exit.clone(),
+            // FIREDANCER: If this gossip service should send updates to Firedancer
+            send_firedancer,
         );
         let t_gossip = cluster_info.clone().gossip(
             epoch_specs.as_ref().map(|es| es.clone_box()),
@@ -349,6 +353,8 @@ pub fn make_node(
         should_check_duplicate_instance,
         None,
         exit,
+        // FIREDANCER: No need to send to Firedancer from gossip spy
+        false,
     );
     (gossip_service, ip_echo, cluster_info)
 }
