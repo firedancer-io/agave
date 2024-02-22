@@ -40,12 +40,12 @@ impl Node {
     /// create localhost node for tests
     pub fn new_localhost() -> Self {
         let pubkey = solana_pubkey::new_rand();
-        Self::new_localhost_with_pubkey(&pubkey)
+        Self::new_localhost_with_pubkey(&pubkey, 9001)
     }
 
     /// create localhost node for tests with provided pubkey
     /// unlike the [new_with_external_ip], this will also bind RPC sockets.
-    pub fn new_localhost_with_pubkey(pubkey: &Pubkey) -> Self {
+    pub fn new_localhost_with_pubkey(pubkey: &Pubkey, firedancer_tpu_port: u16) -> Self {
         let port_range = localhost_port_range_for_tests();
         let bind_ip_addr = IpAddr::V4(Ipv4Addr::LOCALHOST);
         let config = NodeConfig {
@@ -61,7 +61,7 @@ impl Node {
                 .expect("Number of QUIC endpoints can not be zero"),
             vortexor_receiver_addr: None,
         };
-        let mut node = Self::new_with_external_ip(pubkey, config);
+        let mut node = Self::new_with_external_ip(pubkey, config, firedancer_tpu_port);
         let rpc_ports: [u16; 2] = find_available_ports_in_range(bind_ip_addr, port_range).unwrap();
         let rpc_addr = SocketAddr::new(bind_ip_addr, rpc_ports[0]);
         let rpc_pubsub_addr = SocketAddr::new(bind_ip_addr, rpc_ports[1]);
@@ -76,6 +76,7 @@ impl Node {
         gossip_addr: &SocketAddr,
         port_range: PortRange,
         bind_ip_addr: IpAddr,
+        firedancer_tpu_port: u16,
     ) -> Self {
         let config = NodeConfig {
             bind_ip_addrs: Arc::new(BindIpAddrs::new(vec![bind_ip_addr]).expect("should bind")),
@@ -90,7 +91,7 @@ impl Node {
                 .expect("Number of QUIC endpoints can not be zero"),
             vortexor_receiver_addr: None,
         };
-        let mut node = Self::new_with_external_ip(pubkey, config);
+        let mut node = Self::new_with_external_ip(pubkey, config, firedancer_tpu_port);
         let rpc_ports: [u16; 2] = find_available_ports_in_range(bind_ip_addr, port_range).unwrap();
         let rpc_addr = SocketAddr::new(bind_ip_addr, rpc_ports[0]);
         let rpc_pubsub_addr = SocketAddr::new(bind_ip_addr, rpc_ports[1]);
@@ -99,7 +100,13 @@ impl Node {
         node
     }
 
-    pub fn new_with_external_ip(pubkey: &Pubkey, config: NodeConfig) -> Node {
+    pub fn new_with_external_ip(
+        pubkey: &Pubkey,
+        config: NodeConfig,
+        // FIREDANCER: The desired TPU port is passed in from the config.toml file
+        // so that it can be configured.
+        firedancer_tpu_port: u16,
+    ) -> Node {
         let NodeConfig {
             advertised_ip,
             gossip_port,
@@ -138,7 +145,7 @@ impl Node {
             bind_in_range_with_config(bind_ip_addr, port_range, socket_config)
                 .expect("tvu_quic bind");
 
-        let ((tpu_port, tpu_socket), (tpu_port_quic, tpu_quic)) =
+        let ((_tpu_port, tpu_socket), (tpu_port_quic, tpu_quic)) =
             bind_two_in_range_with_offset_and_config(
                 bind_ip_addr,
                 port_range,
@@ -159,7 +166,7 @@ impl Node {
                 .expect("Secondary bind TPU QUIC"),
         );
 
-        let ((tpu_forwards_port, tpu_forwards_socket), (tpu_forwards_quic_port, tpu_forwards_quic)) =
+        let ((_tpu_forwards_port, tpu_forwards_socket), (tpu_forwards_quic_port, tpu_forwards_quic)) =
             bind_two_in_range_with_offset_and_config(
                 bind_ip_addr,
                 port_range,
@@ -184,11 +191,12 @@ impl Node {
             .expect("Secondary bind TPU forwards"),
         );
 
+        // FIREDANCER: Correct TPU vote port is managed by Firedancer, so this is unused.
         let (tpu_vote_port, tpu_vote_sockets) =
             multi_bind_in_range_with_config(bind_ip_addr, port_range, socket_config, 1)
                 .expect("tpu_vote multi_bind");
 
-        let (tpu_vote_quic_port, tpu_vote_quic) =
+        let (_tpu_vote_quic_port, tpu_vote_quic) =
             bind_in_range_with_config(bind_ip_addr, port_range, socket_config)
                 .expect("tpu_vote_quic");
         let mut tpu_vote_quic =
@@ -259,16 +267,18 @@ impl Node {
         info.set_gossip((advertised_ip, gossip_ports[0])).unwrap();
         info.set_tvu(UDP, (advertised_ip, tvu_port)).unwrap();
         info.set_tvu(QUIC, (advertised_ip, tvu_quic_port)).unwrap();
-        info.set_tpu(public_tpu_addr.unwrap_or_else(|| SocketAddr::new(advertised_ip, tpu_port)))
+        // FIREDANCER: The port we receive transactions on is determined by the Firedancer config,
+        // not whatever port Solana Labs manages to bind.
+        info.set_tpu(public_tpu_addr.unwrap_or_else(|| SocketAddr::new(advertised_ip, firedancer_tpu_port)))
             .unwrap();
         info.set_tpu_forwards(
             public_tpu_forwards_addr
-                .unwrap_or_else(|| SocketAddr::new(advertised_ip, tpu_forwards_port)),
+                .unwrap_or_else(|| SocketAddr::new(advertised_ip, firedancer_tpu_port)),
         )
         .unwrap();
-        info.set_tpu_vote(UDP, (advertised_ip, tpu_vote_port))
+        info.set_tpu_vote(UDP, (advertised_ip, firedancer_tpu_port))
             .unwrap();
-        info.set_tpu_vote(QUIC, (advertised_ip, tpu_vote_quic_port))
+        info.set_tpu_vote(QUIC, (advertised_ip, firedancer_tpu_port+QUIC_PORT_OFFSET))
             .unwrap();
         info.set_serve_repair(UDP, (advertised_ip, serve_repair_port))
             .unwrap();
