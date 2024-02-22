@@ -50,6 +50,7 @@ use {
         thread::{self, sleep, Builder, JoinHandle},
         time::{Duration, Instant},
     },
+    solana_poh::poh_recorder::PohRecorder,
 };
 
 // Map from a vote account to the authorized voter for an epoch
@@ -198,6 +199,7 @@ impl ClusterInfoVoteListener {
         blockstore: Arc<Blockstore>,
         bank_notification_sender: Option<BankNotificationSenderConfig>,
         duplicate_confirmed_slot_sender: DuplicateConfirmedSlotsSender,
+        poh_recorder: Arc<RwLock<PohRecorder>>,
     ) -> Self {
         let (verified_vote_transactions_sender, verified_vote_transactions_receiver) = unbounded();
         let listen_thread = {
@@ -212,6 +214,7 @@ impl ClusterInfoVoteListener {
                         sharable_banks,
                         verified_packets_sender,
                         verified_vote_transactions_sender,
+                        poh_recorder,
                     );
                 })
                 .unwrap()
@@ -252,15 +255,25 @@ impl ClusterInfoVoteListener {
         sharable_banks: SharableBanks,
         verified_packets_sender: BankingPacketSender,
         verified_vote_transactions_sender: VerifiedVoteTransactionsSender,
+        poh_recorder: Arc<RwLock<PohRecorder>>,
     ) -> Result<()> {
         let mut cursor = Cursor::default();
         while !exit.load(Ordering::Relaxed) {
-            let votes = cluster_info.get_votes(&mut cursor);
+            let (labels, votes) = cluster_info.get_votes_with_labels(&mut cursor);
             inc_new_counter_debug!("cluster_info_vote_listener-recv_count", votes.len());
             if !votes.is_empty() {
-                let (vote_txs, packets) = Self::verify_votes(votes, &sharable_banks);
+                let (vote_txs, packets_with_labels) = Self::verify_votes(labels, votes, &sharable_banks);
                 verified_vote_transactions_sender.send(vote_txs)?;
-                verified_packets_sender.send(BankingPacketBatch::new(packets))?;
+                // FIREDANCER: Don't sent gossiped votes to Solana Labs TPU, reroute
+                // them into the Firedancer dedup tile instead. Only do this when
+                // we are the leader.
+                // verified_packets_sender.send(BankingPacketBatch::new(packets))?;
+                let _ = verified_packets_sender;
+                if poh_recorder.read().unwrap().has_bank() {
+                    unsafe {
+                        ClusterInfoVoteListener::firedancer_send(cluster_info, packets_with_labels);
+                    }
+                }
             }
             sleep(Duration::from_millis(GOSSIP_SLEEP_MILLIS));
         }
@@ -269,9 +282,10 @@ impl ClusterInfoVoteListener {
 
     #[allow(clippy::type_complexity)]
     fn verify_votes(
+        labels: Vec<solana_gossip::crds_value::CrdsValueLabel>,
         votes: Vec<Transaction>,
-        sharable_banks: &SharableBanks,
-    ) -> (Vec<Transaction>, Vec<PacketBatch>) {
+        sharable_banks: &SharableBanks
+    ) -> (Vec<Transaction>, Vec<(solana_gossip::crds_value::CrdsValueLabel, PacketBatch)>) {
         let mut packet_batches = packet::to_packet_batches(&votes, 1);
 
         // Votes should already be filtered by this point.
@@ -285,12 +299,13 @@ impl ClusterInfoVoteListener {
         votes
             .into_iter()
             .zip(packet_batches)
-            .filter(|(_, packet_batch)| {
+            .zip(labels)
+            .filter(|((_, packet_batch), _)| {
                 // to_packet_batches() above splits into 1 packet long batches
                 assert_eq!(packet_batch.len(), 1);
                 !packet_batch.get(0).unwrap().meta().discard()
             })
-            .filter_map(|(tx, packet_batch)| {
+            .filter_map(|((tx, packet_batch), label)| {
                 let (vote_account_key, vote, ..) = vote_parser::parse_vote_transaction(&tx)?;
                 let slot = vote.last_voted_slot()?;
                 let epoch = epoch_schedule.get_epoch(slot);
@@ -302,9 +317,32 @@ impl ClusterInfoVoteListener {
                 if !keys.any(|(i, key)| tx.message.is_signer(i) && key == authorized_voter) {
                     return None;
                 }
-                Some((tx, packet_batch))
+                Some((tx, (label, packet_batch)))
             })
             .unzip()
+    }
+
+    // FIREDANCER: Send gossiped votes across to the Firedancer dedup tile
+    unsafe fn firedancer_send(
+        cluster_info: &ClusterInfo,
+        votes: Vec<(solana_gossip::crds_value::CrdsValueLabel, packet::PacketBatch)>,
+    ) {
+        // Prevent warnings about unused BankingPacketBatch
+        let _: Option<BankingPacketBatch> = None;
+        for (label, vote) in votes {
+            assert!(vote.len() == 1);
+            let txn = vote.get(0).unwrap();
+            let data = txn.data(..).unwrap(); /* discard packets already dropped by now */
+            assert!(data.len() <= 1232);
+
+            extern "C" {
+                fn fd_ext_poh_publish_gossip_vote(data: *const u8, len: usize, ipv4: u32, pubkey: *const u8);
+            }
+            let pubkey = label.pubkey();
+            let ip = cluster_info.lookup_contact_info(&pubkey, |contact_info| contact_info.tpu_vote(solana_connection_cache::connection_cache::Protocol::QUIC).or(contact_info.tpu_vote(solana_connection_cache::connection_cache::Protocol::UDP)));
+            let ip_u32 = match ip.flatten().map(|ip| ip.ip()) { Some(std::net::IpAddr::V4(ip)) => u32::from_le_bytes(ip.octets()), _ => 0u32 };
+            fd_ext_poh_publish_gossip_vote(data.as_ptr(), data.len(), ip_u32, pubkey.as_array().as_ptr());
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
