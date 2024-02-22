@@ -2237,6 +2237,8 @@ fn load_blockstore(
                 .map(|service| service.sender()),
             accounts_update_notifier,
             exit,
+            // FIREDANCER: We want to get leader scheduel updates from bank forks.
+            true,
         )
         .map_err(|err| err.to_string())?;
 
