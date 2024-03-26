@@ -58,6 +58,8 @@ use {
 // but needs them to be defined for the linker to build the binary.
 #[no_mangle]
 extern "C" fn fd_ext_poh_publish_leader_schedule( _data: *const u8, _len: u64 ) {}
+#[no_mangle]
+extern "C" fn fd_ext_larger_max_cost_per_block() -> i32 { 0 }
 
 pub struct LoadAndProcessLedgerOutput {
     pub bank_forks: Arc<RwLock<BankForks>>,
