@@ -85,9 +85,21 @@ impl Default for CostTracker {
         const _: () = assert!(MAX_WRITABLE_ACCOUNT_UNITS <= MAX_BLOCK_UNITS);
         const _: () = assert!(MAX_VOTE_UNITS <= MAX_BLOCK_UNITS);
 
+        // FIREDANCER: We support an option to increase the max CU cost per block, even though
+        // it is not consensus. Otherwise it can be the limiting bottleneck when benchmarking.
+        extern "C" {
+            fn fd_ext_larger_max_cost_per_block() -> i32;
+        }
+
+        let block_cost_limit = if unsafe { fd_ext_larger_max_cost_per_block() } != 0 {
+            18 * MAX_BLOCK_UNITS
+        } else {
+            MAX_BLOCK_UNITS
+        };
+
         Self {
             account_cost_limit: MAX_WRITABLE_ACCOUNT_UNITS,
-            block_cost_limit: MAX_BLOCK_UNITS,
+            block_cost_limit,
             vote_cost_limit: MAX_VOTE_UNITS,
             cost_by_writable_accounts: HashMap::with_capacity_and_hasher(
                 WRITABLE_ACCOUNTS_PER_BLOCK,
