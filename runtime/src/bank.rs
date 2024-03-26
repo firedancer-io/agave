@@ -4830,8 +4830,19 @@ impl Bank {
     /// Recomputes cost tracker limits from active feature state.
     fn apply_cost_tracker_limits_for_active_features(&mut self) {
         let params = self.current_slot_params();
-        let cost_limits =
+        let mut cost_limits =
             params.cost_limits(self.feature_set.snapshot().raise_block_limits_to_100m);
+
+        // FIREDANCER: We support an option to increase the max CU cost per block, even though
+        // it is not consensus. Otherwise it can be the limiting bottleneck when benchmarking.
+        // This used to live in CostTracker::default(), but agave now recomputes the limits from
+        // slot_params here, discarding any default value
+        unsafe extern "C" {
+            fn fd_ext_larger_max_cost_per_block() -> i32;
+        }
+        if unsafe { fd_ext_larger_max_cost_per_block() } != 0 {
+            cost_limits.block_cost = cost_limits.block_cost.saturating_mul(18);
+        }
 
         let mut cost_tracker = self.write_cost_tracker().unwrap();
         cost_tracker.set_limits(cost_limits);
