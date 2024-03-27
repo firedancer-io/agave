@@ -177,7 +177,19 @@ pub(super) fn sanitize<T: ShredDataTrait>(shred: &T) -> Result<(), Error> {
     }
     let common_header = shred.common_header();
     let data_header = shred.data_header();
-    if common_header.index as usize >= MAX_DATA_SHREDS_PER_SLOT {
+    // FIREDANCER: We support an option to increase the max shreds
+    // per block, even though these blocks would violate consensus
+    // limits.  Otherwise, these limits can limit performance during
+    // benchmarking.
+    extern "C" {
+        fn fd_ext_larger_shred_limits_per_block() -> i32;
+    }
+    let max_data_shred_per_slot= if unsafe { fd_ext_larger_shred_limits_per_block() } != 0 {
+        32 * MAX_DATA_SHREDS_PER_SLOT
+    } else { 
+        MAX_DATA_SHREDS_PER_SLOT
+    };
+    if common_header.index as usize >= max_data_shred_per_slot {
         return Err(Error::InvalidShredIndex(
             ShredType::Data,
             common_header.index,
