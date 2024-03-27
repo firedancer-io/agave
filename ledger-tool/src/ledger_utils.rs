@@ -61,6 +61,8 @@ use {
 extern "C" fn fd_ext_poh_publish_leader_schedule( _data: *const u8, _len: u64 ) {}
 #[no_mangle]
 extern "C" fn fd_ext_larger_max_cost_per_block() -> i32 { 0 }
+#[no_mangle]
+extern "C" fn fd_ext_larger_shred_limits_per_block() -> i32 { 0 }
 
 pub struct LoadAndProcessLedgerOutput {
     pub bank_forks: Arc<RwLock<BankForks>>,
