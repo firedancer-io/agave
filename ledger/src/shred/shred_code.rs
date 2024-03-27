@@ -131,19 +131,35 @@ impl From<merkle::ShredCode> for ShredCode {
 pub(super) fn erasure_shard_index<T: ShredCodeTrait>(shred: &T) -> Option<usize> {
     // Assert that the last shred index in the erasure set does not
     // overshoot MAX_{DATA,CODE}_SHREDS_PER_SLOT.
+
+    // FIREDANCER: We support an option to increase the max shreds
+    // per block, even though these blocks would violate consensus
+    // limits.  Otherwise, these limits can limit performance during
+    // benchmarking.
+    extern "C" {
+        fn fd_ext_larger_shred_limits_per_block() -> i32;
+    }
+    let (max_data_shred_per_slot, max_code_shreds_per_slot) = if unsafe { fd_ext_larger_shred_limits_per_block() } != 0 {
+        (32 * MAX_DATA_SHREDS_PER_SLOT, 32 * MAX_CODE_SHREDS_PER_SLOT)
+    } else { 
+        (MAX_DATA_SHREDS_PER_SLOT, MAX_CODE_SHREDS_PER_SLOT)
+    };
+
     let common_header = shred.common_header();
     let coding_header = shred.coding_header();
     if common_header
         .fec_set_index
         .checked_add(u32::from(coding_header.num_data_shreds.checked_sub(1)?))? as usize
-        >= MAX_DATA_SHREDS_PER_SLOT
+        // FIREDANCER: Allow increasing the limit during benchmarking
+        >= max_data_shred_per_slot
     {
         return None;
     }
     if shred
         .first_coding_index()?
         .checked_add(u32::from(coding_header.num_coding_shreds.checked_sub(1)?))? as usize
-        >= MAX_CODE_SHREDS_PER_SLOT
+        // FIREDANCER: Allow increasing the limit during benchmarking
+        >= max_code_shreds_per_slot
     {
         return None;
     }
@@ -161,7 +177,19 @@ pub(super) fn sanitize<T: ShredCodeTrait>(shred: &T) -> Result<(), Error> {
     }
     let common_header = shred.common_header();
     let coding_header = shred.coding_header();
-    if common_header.index as usize >= MAX_CODE_SHREDS_PER_SLOT {
+    // FIREDANCER: We support an option to increase the max shreds
+    // per block, even though these blocks would violate consensus
+    // limits.  Otherwise, these limits can limit performance during
+    // benchmarking.
+    extern "C" {
+        fn fd_ext_larger_shred_limits_per_block() -> i32;
+    }
+    let max_code_shreds_per_slot = if unsafe { fd_ext_larger_shred_limits_per_block() } != 0 {
+        32 * MAX_CODE_SHREDS_PER_SLOT
+    } else {
+        MAX_CODE_SHREDS_PER_SLOT
+    };
+    if common_header.index as usize >= max_code_shreds_per_slot {
         return Err(Error::InvalidShredIndex(
             ShredType::Code,
             common_header.index,
