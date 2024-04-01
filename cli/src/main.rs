@@ -225,6 +225,15 @@ pub fn parse_args<'a>(
     ))
 }
 
+#[unsafe(no_mangle)]
+pub(crate) static fdctl_major_version: u64 = 0;
+#[unsafe(no_mangle)]
+pub(crate) static fdctl_minor_version: u64 = 0;
+#[unsafe(no_mangle)]
+pub(crate) static fdctl_patch_version: u64 = 0;
+#[unsafe(no_mangle)]
+pub(crate) static fdctl_commit_ref: u32 = 0;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn error::Error>> {
     agave_logger::setup_with_default("off");
