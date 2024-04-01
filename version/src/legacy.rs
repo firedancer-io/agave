@@ -47,10 +47,10 @@ impl Default for LegacyVersion2 {
                 .unwrap(),
         );
         Self {
-            major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
-            minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
-            patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
-            commit: compute_commit(option_env!("CI_COMMIT")),
+            major: env!("FIREDANCER_VERSION_MAJOR").parse().unwrap(),
+            minor: env!("FIREDANCER_VERSION_MINOR").parse().unwrap(),
+            patch: env!("FIREDANCER_VERSION_PATCH").parse().unwrap(),
+            commit: compute_commit(option_env!("FIREDANCER_CI_COMMIT")),
             feature_set,
         }
     }
