@@ -67,8 +67,8 @@ impl TryFrom<ClientId> for u16 {
 
 impl ClientId {
     pub const fn this_client() -> Self {
-        // Other client implementations need to modify this line.
-        Self::Agave
+        // FIREDANCER: Report client as Firedancer to gossip
+        Self::Frankendancer
     }
 }
 
