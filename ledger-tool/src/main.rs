@@ -802,6 +802,15 @@ use jemallocator::Jemalloc;
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
+#[no_mangle]
+pub(crate) static fdctl_major_version: u64 = 0;
+#[no_mangle]
+pub(crate) static fdctl_minor_version: u64 = 0;
+#[no_mangle]
+pub(crate) static fdctl_patch_version: u64 = 0;
+#[no_mangle]
+pub(crate) static fdctl_commit_ref: u32 = 0;
+
 #[allow(clippy::cognitive_complexity)]
 fn main() {
     // Ignore SIGUSR1 to prevent long-running calls being killed by logrotate
