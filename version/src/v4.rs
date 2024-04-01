@@ -1,6 +1,5 @@
 use {
     crate::{client_ids::ClientId, compute_commit},
-    rand::{Rng, rng},
     serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _, ser::Error as _},
     solana_sanitize::Sanitize,
     solana_serde_varint as serde_varint,
@@ -180,16 +179,16 @@ impl Version {
     }
 
     pub fn this_build() -> Self {
+        // FIREDANCER: Report firedancer version to gossip
         Self::new_from_parts(
-            env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
-            env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
-            env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
-            compute_commit(option_env!("CI_COMMIT"))
-                .or(compute_commit(option_env!("AGAVE_GIT_COMMIT_HASH")))
-                .unwrap_or_else(|| rng().random::<u32>()),
+            env!("FIREDANCER_VERSION_MAJOR").parse().unwrap(),
+            env!("FIREDANCER_VERSION_MINOR").parse().unwrap(),
+            env!("FIREDANCER_VERSION_PATCH").parse().unwrap(),
+            compute_commit(option_env!("FIREDANCER_CI_COMMIT"))
+                .unwrap_or_default(),
             u32::from_le_bytes(agave_feature_set::ID.as_ref()[..4].try_into().unwrap()),
             ClientId::this_client(),
-            Prerelease::from_str(env!("CARGO_PKG_VERSION_PRE")).unwrap(),
+            Prerelease::Stable,
         )
     }
 
@@ -690,7 +689,7 @@ mod tests {
             Version::new_from_parts(0, 0, 0, 0, 0, ClientId::this_client(), Prerelease::Stable);
         assert_eq!(
             version.as_detailed_string(),
-            "0.0.0 (src:00000000; feat:00000000, client:Agave)",
+            "0.0.0 (src:00000000; feat:00000000, client:Frankendancer)",
         );
 
         let version = Version::new_from_parts(
@@ -704,7 +703,7 @@ mod tests {
         );
         assert_eq!(
             version.as_detailed_string(),
-            "0.0.0-rc.0 (src:00000000; feat:00000000, client:Agave)",
+            "0.0.0-rc.0 (src:00000000; feat:00000000, client:Frankendancer)",
         );
     }
 }
