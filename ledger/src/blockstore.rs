@@ -4862,32 +4862,39 @@ pub fn create_new_ledger(
     drop(blockstore);
 
     let archive_path = ledger_path.join(DEFAULT_GENESIS_ARCHIVE);
-    let args = vec![
-        "jcfhS",
-        archive_path.to_str().unwrap(),
-        "-C",
-        ledger_path.to_str().unwrap(),
-        DEFAULT_GENESIS_FILE,
-        blockstore_dir,
-    ];
-    let output = std::process::Command::new("tar")
-        .env("COPYFILE_DISABLE", "1")
-        .args(args)
-        .output()
-        .unwrap();
-    if !output.status.success() {
-        use std::str::from_utf8;
-        error!("tar stdout: {}", from_utf8(&output.stdout).unwrap_or("?"));
-        error!("tar stderr: {}", from_utf8(&output.stderr).unwrap_or("?"));
+    // FIREDANCER: We switch from assuming tar command exists locally to linking
+    // the library. This resolves some deployment and debugging issues.
+    let mut archive = tar::Builder::new(bzip2::write::BzEncoder::new(std::fs::File::create(&archive_path)?, bzip2::Compression::default()));
+    archive.append_path_with_name(ledger_path.join(DEFAULT_GENESIS_FILE), DEFAULT_GENESIS_FILE)?;
+    archive.append_dir_all("rocksdb", ledger_path.join(blockstore_dir))?;
+    archive.finish()?;
+    drop(archive);
+    // let args = vec![
+    //     "jcfhS",
+    //     archive_path.to_str().unwrap(),
+    //     "-C",
+    //     ledger_path.to_str().unwrap(),
+    //     DEFAULT_GENESIS_FILE,
+    //     blockstore_dir,
+    // ];
+    // let output = std::process::Command::new("tar")
+    //     .env("COPYFILE_DISABLE", "1")
+    //     .args(args)
+    //     .output()
+    //     .unwrap();
+    // if !output.status.success() {
+    //     use std::str::from_utf8;
+    //     error!("tar stdout: {}", from_utf8(&output.stdout).unwrap_or("?"));
+    //     error!("tar stderr: {}", from_utf8(&output.stderr).unwrap_or("?"));
 
-        return Err(BlockstoreError::Io(IoError::new(
-            ErrorKind::Other,
-            format!(
-                "Error trying to generate snapshot archive: {}",
-                output.status
-            ),
-        )));
-    }
+    //     return Err(BlockstoreError::Io(IoError::new(
+    //         ErrorKind::Other,
+    //         format!(
+    //             "Error trying to generate snapshot archive: {}",
+    //             output.status
+    //         ),
+    //     )));
+    // }
 
     // ensure the genesis archive can be unpacked and it is under
     // max_genesis_archive_unpacked_size, immediately after creating it above.

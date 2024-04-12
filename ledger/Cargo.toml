@@ -72,6 +72,11 @@ tokio = { workspace = true, features = ["full"] }
 tokio-stream = { workspace = true }
 trees = { workspace = true }
 
+# FIREDANCER: We switch from assuming tar command exists locally to linking
+# the library. This resolves some deployment and debugging issues.
+tar = { workspace = true }
+bzip2 = { workspace = true }
+
 [dependencies.rocksdb]
 # Avoid the vendored bzip2 within rocksdb-sys that can cause linker conflicts
 # when also using the bzip2 crate
