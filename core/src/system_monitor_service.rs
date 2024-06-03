@@ -401,8 +401,10 @@ enum InterestingLimit {
 
 #[cfg(target_os = "linux")]
 const INTERESTING_LIMITS: &[(&str, InterestingLimit)] = &[
-    ("net.core.rmem_max", InterestingLimit::Recommend(134217728)),
-    ("net.core.wmem_max", InterestingLimit::Recommend(134217728)),
+    // FIREDANCER: Limits are no longer enforced, since we use our own
+    // XDP networking stack.
+    // ("net.core.rmem_max", InterestingLimit::Recommend(134217728)),
+    // ("net.core.wmem_max", InterestingLimit::Recommend(134217728)),
     ("vm.max_map_count", InterestingLimit::Recommend(1000000)),
     ("net.core.optmem_max", InterestingLimit::QueryOnly),
     ("net.core.netdev_max_backlog", InterestingLimit::QueryOnly),
