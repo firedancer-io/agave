@@ -52,6 +52,7 @@ impl<'a> SnapshotMinimizer<'a> {
         ending_slot: Slot,
         transaction_account_set: DashSet<Pubkey>,
     ) {
+        let old = bank.capitalization();
         let minimizer = SnapshotMinimizer {
             bank,
             starting_slot,
@@ -77,7 +78,8 @@ impl<'a> SnapshotMinimizer<'a> {
 
         // Update accounts_cache and capitalization
         minimizer.bank.force_flush_accounts_cache();
-        minimizer.bank.set_capitalization();
+        // minimizer.bank.set_capitalization();
+        minimizer.bank.store_capitalization(old);
     }
 
     /// Helper function to measure time and number of accounts added

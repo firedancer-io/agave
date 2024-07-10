@@ -77,7 +77,7 @@ trees = { workspace = true }
 # when also using the bzip2 crate
 version = "0.22.0"
 default-features = false
-features = ["lz4"]
+features = ["lz4", "snappy"]
 
 [dev-dependencies]
 bs58 = { workspace = true }

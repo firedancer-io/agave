@@ -693,6 +693,15 @@ fn do_blockstore_process_command(ledger_path: &Path, matches: &ArgMatches<'_>) -
                 if target.insert_shreds(shreds, None, true).is_err() {
                     warn!("error inserting shreds for slot {}", slot);
                 }
+                let is_root = source.is_root(slot);
+                if is_root {
+                    let _ = target.set_roots([slot].iter());
+                }
+
+                let bank_hash = source.get_bank_hash(slot);
+                if let Some(bank_hash) = bank_hash {
+                    target.insert_bank_hash(slot, bank_hash, is_root);
+                }
             }
         }
         ("dead-slots", Some(arg_matches)) => {

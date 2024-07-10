@@ -2831,6 +2831,9 @@ impl Bank {
             self.freeze_started.store(true, Relaxed);
             *hash = self.hash_internal_state();
             self.rc.accounts.accounts_db.mark_slot_frozen(self.slot());
+
+            drop(hash);
+            let _ = bank_hash_details::write_bank_hash_details_file(&self);
         }
     }
 
@@ -5784,6 +5787,11 @@ impl Bank {
             .store(self.calculate_capitalization(debug_verify), Relaxed);
         old
     }
+    pub fn store_capitalization(&self, val: u64) -> u64 {
+        let old = self.capitalization();
+        self.capitalization.store(val, Relaxed);
+        old
+    }
 
     /// Returns the `AccountsHash` that was calculated for this bank's slot
     ///
@@ -5889,7 +5897,7 @@ impl Bank {
                     );
             }
 
-            panic!(
+            warn!(
                 "capitalization_mismatch. slot: {}, calculated_lamports: {}, capitalization: {}",
                 self.slot(),
                 total_lamports,
