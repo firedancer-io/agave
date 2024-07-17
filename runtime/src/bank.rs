@@ -214,6 +214,21 @@ const _CHECK_ABI: [u8; 248] = [0; std::mem::size_of::<SanitizedTransaction>()];
 
 
 #[no_mangle]
+pub extern "C" fn fd_ext_bank_verify_precompiles( bank: *const std::ffi::c_void, txn: *const std::ffi::c_void ) -> i32 {
+    let txn: &RuntimeTransaction<SanitizedTransaction> = unsafe {
+        &*(txn as *const RuntimeTransaction<SanitizedTransaction>)
+    };
+    let bank = bank as *const Bank;
+    unsafe { Arc::increment_strong_count(bank) };
+    let bank = unsafe { Arc::from_raw( bank as *const Bank ) };
+
+    match verify_precompiles(txn, &bank.feature_set) {
+        Ok(_) => 0,
+        Err(_) => -1,
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn fd_ext_bank_acquire( bank: *const std::ffi::c_void ) {
     let bank = bank as *const Bank;
     unsafe { Arc::increment_strong_count(bank) };
