@@ -252,6 +252,21 @@ fn transaction_error_to_code(err: &TransactionError) -> i32 {
 const _CHECK_ABI: [u8; 248] = [0; std::mem::size_of::<SanitizedTransaction>()];
 
 #[no_mangle]
+pub extern "C" fn fd_ext_bank_verify_precompiles( bank: *const std::ffi::c_void, txn: *const std::ffi::c_void ) -> i32 {
+    let txn: &SanitizedTransaction = unsafe {
+        &*(txn as *const SanitizedTransaction)
+    };
+    let bank = bank as *const Bank;
+    unsafe { Arc::increment_strong_count(bank) };
+    let bank = unsafe { Arc::from_raw( bank as *const Bank ) };
+
+    match txn.verify_precompiles(&bank.feature_set) {
+        Ok(_) => 0,
+        Err(_) => -1,
+    }
+}
+
+#[no_mangle]
 pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_void, txns: *const std::ffi::c_void, txn_count: u64, out_load_results: *mut i32, out_executing_results: *mut i32, out_executed_results: *mut i32 ) -> *mut std::ffi::c_void {
     let txns = unsafe {
         std::slice::from_raw_parts(txns as *const SanitizedTransaction, txn_count as usize)
