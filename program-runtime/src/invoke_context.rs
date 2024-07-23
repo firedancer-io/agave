@@ -455,6 +455,15 @@ impl<'a> InvokeContext<'a> {
         timings: &mut ExecuteTimings,
     ) -> Result<(), InstructionError> {
         *compute_units_consumed = 0;
+
+        // [solfuzz-patch] Stub out the processing of the instruction.
+        // Used in fuzzers that indirectly call this function (like the CPI fuzzer) but
+        // don't want to process the instruction.
+        if cfg!(feature = "stub-proc-instr"){
+            eprintln!("Stubbing out processing of instruction");
+            return Ok(());
+        }
+
         self.transaction_context
             .get_next_instruction_context()?
             .configure(program_indices, instruction_accounts, instruction_data);
