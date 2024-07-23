@@ -68,7 +68,7 @@ solana-vote = { path = "../../vote", version = "=2.1.11" }
 solana-vote-program = { path = "../../programs/vote", version = "=2.1.11" }
 agave-validator = { path = "../../validator", version = "=2.1.11" }
 solana-zk-token-sdk = { path = "../../zk-token-sdk", version = "=2.1.11" }
-solana_rbpf = "=0.8.5"
+solana_rbpf = { git = "https://github.com/solana-labs/rbpf", rev = "cd19a25c17ec474e6fa01a3cc3efa325f44cd111" }
 thiserror = "1.0"
 
 [package]
