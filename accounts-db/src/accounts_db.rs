@@ -1752,7 +1752,7 @@ impl SplitAncientStorages {
 }
 
 pub fn quarter_thread_count() -> usize {
-    std::cmp::max(2, num_cpus::get() / 4)
+    1
 }
 
 pub fn make_min_priority_thread_pool() -> ThreadPool {
