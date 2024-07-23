@@ -58,3 +58,4 @@ frozen-abi = [
     "solana-sdk/frozen-abi",
 ]
 shuttle-test = ["solana-type-overrides/shuttle-test"]
+stub-proc-instr = []
