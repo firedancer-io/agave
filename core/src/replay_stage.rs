@@ -2292,6 +2292,17 @@ impl ReplayStage {
 
             blockstore.slots_stats.mark_rooted(new_root);
 
+            // FIREDANCER: Send a slot rooted notification.
+            let mut memory: [u8; 8] = [0; 8];
+            memory[0..8].copy_from_slice(&new_root.to_le_bytes());
+
+            extern "C" {
+                fn fd_ext_plugin_publish_replay_stage(kind: u8, data: *const u8, len: u64);
+            }
+            unsafe {
+                fd_ext_plugin_publish_replay_stage(0, memory.as_ptr(), 8);
+            }
+
             rpc_subscriptions.notify_roots(rooted_slots);
             if let Some(sender) = bank_notification_sender {
                 sender
@@ -3015,6 +3026,18 @@ impl ReplayStage {
                         SlotStateUpdate::Duplicate(duplicate_state),
                     );
                 }
+
+                // FIREDANCER: Send a slot completed notification.
+                let mut memory: [u8; 8] = [0; 8];
+                memory[0..8].copy_from_slice(&bank.slot().to_le_bytes());
+
+                extern "C" {
+                    fn fd_ext_plugin_publish_replay_stage(kind: u8, data: *const u8, len: u64);
+                }
+                unsafe {
+                    fd_ext_plugin_publish_replay_stage(2, memory.as_ptr(), 8);
+                }
+
                 if let Some(sender) = bank_notification_sender {
                     sender
                         .sender

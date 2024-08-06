@@ -2602,8 +2602,6 @@ impl ClusterInfo {
         thread_pool: &ThreadPool,
         last_print: &mut Instant,
         should_check_duplicate_instance: bool,
-        // FIREDANCER: Receive channel for communicated cluster contact info after CRDS updates
-        send_firedancer: &mut Option<Instant>,
     ) -> Result<(), GossipError> {
         let _st = ScopedTimer::from(&self.stats.gossip_listen_loop_time);
         const RECV_TIMEOUT: Duration = Duration::from_secs(1);
@@ -2644,13 +2642,6 @@ impl ClusterInfo {
             submit_gossip_stats(&self.stats, &self.gossip, &stakes);
             *last_print = Instant::now();
         }
-        // FIREDANCER: Publish newly received gossip information to Firedancer periodically
-        if let Some(last_update) = send_firedancer {
-            if last_update.elapsed() > Duration::from_secs(5) {
-                unsafe { self.firedancer_send_cluster_nodes() };
-                *last_update = Instant::now();
-            }
-        }
         self.stats
             .gossip_listen_loop_iterations_since_last_report
             .add_relaxed(1);
@@ -2662,9 +2653,7 @@ impl ClusterInfo {
     const FIREDANCER_CLUSTER_NODE_SZ: u64 = 8 + Self::FIREDANCER_CLUSTER_NODE_CNT * 38;
 
     /// FIREDANCER: Publish current gossiped cluster contact information to Firedancer
-    unsafe fn firedancer_send_cluster_nodes(
-        &self,
-    ) {
+    unsafe fn firedancer_send_cluster_nodes(&self) {
         let peers = self.tvu_peers();
         if peers.len() > Self::FIREDANCER_CLUSTER_NODE_CNT as usize {
             warn!("cluster_nodes len {} exceeds max_elements {}", peers.len(), Self::FIREDANCER_CLUSTER_NODE_CNT);
@@ -2744,11 +2733,8 @@ impl ClusterInfo {
             .name("solGossipListen".to_string())
             .spawn(move || {
                 // FIREDANCER: We should send a cluster node contact update immediately
-                let mut last_update = if send_firedancer {
-                    Some(Instant::now() - Duration::from_secs(5))
-                } else {
-                    None
-                };
+                let mut last_update = Instant::now() - Duration::from_secs(5);
+
                 while !exit.load(Ordering::Relaxed) {
                     if let Err(err) = self.run_listen(
                         &recycler,
@@ -2758,8 +2744,6 @@ impl ClusterInfo {
                         &thread_pool,
                         &mut last_print,
                         should_check_duplicate_instance,
-                        // FIREDANCER: Send the cluster contact info over the IPC boundary to Firedancer
-                        &mut last_update,
                     ) {
                         match err {
                             GossipError::RecvTimeoutError(RecvTimeoutError::Disconnected) => break,
@@ -2782,6 +2766,14 @@ impl ClusterInfo {
                                 std::process::exit(1);
                             }
                             _ => error!("gossip run_listen failed: {}", err),
+                        }
+                    }
+
+                    // FIREDANCER: Send the cluster contact info over the IPC boundary to Firedancer
+                    if send_firedancer {
+                        if last_update.elapsed() > Duration::from_secs(5) {
+                            unsafe { self.firedancer_send_cluster_nodes() };
+                            last_update = Instant::now();
                         }
                     }
                 }
