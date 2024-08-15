@@ -275,7 +275,7 @@ pub extern "C" fn fd_ext_bank_verify_precompiles( bank: *const std::ffi::c_void,
 
 
 #[no_mangle]
-pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_void, txns: *const std::ffi::c_void, txn_count: u64, out_load_results: *mut i32, out_executing_results: *mut i32, out_executed_results: *mut i32, out_consumed_cus: *mut u32 ) -> *mut std::ffi::c_void {
+pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_void, txns: *const std::ffi::c_void, txn_count: u64, enable_extended_metadata: i32, out_load_results: *mut i32, out_executing_results: *mut i32, out_executed_results: *mut i32, out_consumed_cus: *mut u32 ) -> *mut std::ffi::c_void {
     let txns = unsafe {
         std::slice::from_raw_parts(txns as *const SanitizedTransaction, txn_count as usize)
     };
@@ -287,6 +287,7 @@ pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_vo
     let mut batch = TransactionBatch::new(lock_results, bank.as_ref(), Cow::Borrowed(txns));
     batch.set_needs_unlock(false);
 
+    let enable = enable_extended_metadata != 0;
     let mut timings = ExecuteTimings::default();
     let output = bank.load_and_execute_transactions(&batch, MAX_PROCESSING_AGE, &mut timings,
         TransactionProcessingConfig {
@@ -296,9 +297,9 @@ pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_vo
             log_messages_bytes_limit: None,
             limit_to_load_programs: false,
             recording_config: ExecutionRecordingConfig {
-                enable_cpi_recording: false,
-                enable_log_recording: false,
-                enable_return_data_recording: false
+                enable_cpi_recording: enable,
+                enable_log_recording: enable,
+                enable_return_data_recording: enable
             },
             transaction_account_lock_limit: Some(64),
         }
