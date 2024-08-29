@@ -3178,6 +3178,13 @@ impl Bank {
         sanitized_txs: &[SanitizedTransaction],
         execution_results: &[TransactionExecutionResult],
     ) {
+        // FIREDANCER: don't insert anything into the status cache if it's disabled for
+        // benchmarking reasons.
+        extern "C" {
+            fn fd_ext_disable_status_cache() -> i32;
+        }
+        if unsafe { fd_ext_disable_status_cache() } != 0 { return; }
+
         let mut status_cache = self.status_cache.write().unwrap();
         assert_eq!(sanitized_txs.len(), execution_results.len());
         for (tx, execution_result) in sanitized_txs.iter().zip(execution_results) {
@@ -3571,6 +3578,12 @@ impl Bank {
         lock_results: Vec<TransactionCheckResult>,
         error_counters: &mut TransactionErrorMetrics,
     ) -> Vec<TransactionCheckResult> {
+        // FIREDANCER: don't read anything from the status cache if it's disabled for
+        // benchmarking reasons.
+        extern "C" {
+            fn fd_ext_disable_status_cache() -> i32;
+        }
+        if unsafe { fd_ext_disable_status_cache() } != 0 { return lock_results; }
         let rcache = self.status_cache.read().unwrap();
         sanitized_txs
             .iter()
