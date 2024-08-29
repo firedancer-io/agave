@@ -188,6 +188,12 @@ impl Bank {
         lock_results: Vec<TransactionCheckResult>,
         error_counters: &mut TransactionErrorMetrics,
     ) -> Vec<TransactionCheckResult> {
+        // FIREDANCER: don't read anything from the status cache if it's disabled for
+        // benchmarking reasons.
+        extern "C" {
+            fn fd_ext_disable_status_cache() -> i32;
+        }
+        if unsafe { fd_ext_disable_status_cache() } != 0 { return lock_results; }
         let rcache = self.status_cache.read().unwrap();
         sanitized_txs
             .iter()
