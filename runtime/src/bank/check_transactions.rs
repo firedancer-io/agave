@@ -232,6 +232,12 @@ impl Bank {
         collect_processed_slots: bool,
         error_counters: &mut TransactionErrorMetrics,
     ) -> (Vec<TransactionCheckResult>, Option<Vec<Option<Slot>>>) {
+        // FIREDANCER: don't read anything from the status cache if it's disabled for
+        // benchmarking reasons.
+        unsafe extern "C" {
+            fn fd_ext_disable_status_cache() -> i32;
+        }
+        if unsafe { fd_ext_disable_status_cache() } != 0 { return (lock_results, None); }
         // Do allocation before acquiring the lock on the status cache.
         let mut check_results = Vec::with_capacity(sanitized_txs.len());
         let mut processed_slots = if collect_processed_slots {
