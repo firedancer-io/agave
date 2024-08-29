@@ -3002,6 +3002,13 @@ impl Bank {
         sanitized_txs: &[impl TransactionWithMeta],
         processing_results: &[TransactionProcessingResult],
     ) {
+        // FIREDANCER: don't insert anything into the status cache if it's disabled for
+        // benchmarking reasons.
+        extern "C" {
+            fn fd_ext_disable_status_cache() -> i32;
+        }
+        if unsafe { fd_ext_disable_status_cache() } != 0 { return; }
+
         let mut status_cache = self.status_cache.write().unwrap();
         assert_eq!(sanitized_txs.len(), processing_results.len());
         for (tx, processing_result) in sanitized_txs.iter().zip(processing_results) {
