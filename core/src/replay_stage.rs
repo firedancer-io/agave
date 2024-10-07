@@ -1095,6 +1095,28 @@ impl ReplayStage {
                         last_reset_bank_descendants = vec![];
                         tpu_has_bank = false;
 
+                        // FIREDANCER: Send a reset chain notification
+                        let parents = reset_bank.parents();
+                        assert!(parents.len()<4096);
+
+                        let last_landed_vote: u64 = progress.my_latest_landed_vote(reset_bank.slot()).unwrap_or(Slot::MAX);
+
+                        let mut memory: [u8; 4098*8] = [0; 4098*8];
+                        memory[0..8].copy_from_slice(&last_landed_vote.to_le_bytes());
+                        memory[8..16].copy_from_slice(&parents.len().to_le_bytes());
+                        memory[16..24].copy_from_slice(&reset_bank.slot().to_le_bytes());
+
+                        for (i, parent) in parents.iter().enumerate() {
+                            memory[24 + i*8..24 + (i+1)*8].copy_from_slice(&parent.slot().to_le_bytes());
+                        }
+
+                        extern "C" {
+                            fn fd_ext_plugin_publish_replay_stage(kind: u8, data: *const u8, len: u64);
+                        }
+                        unsafe {
+                            fd_ext_plugin_publish_replay_stage(10, memory.as_ptr(), 4098*8);
+                        }
+
                         if let Some(last_voted_slot) = tower.last_voted_slot() {
                             // If the current heaviest bank is not a descendant of the last voted slot,
                             // there must be a partition
@@ -2465,6 +2487,17 @@ impl ReplayStage {
 
             blockstore.slots_stats.mark_rooted(new_root);
 
+            // FIREDANCER: Send a slot rooted notification.
+            let mut memory: [u8; 8] = [0; 8];
+            memory[0..8].copy_from_slice(&new_root.to_le_bytes());
+
+            extern "C" {
+                fn fd_ext_plugin_publish_replay_stage(kind: u8, data: *const u8, len: u64);
+            }
+            unsafe {
+                fd_ext_plugin_publish_replay_stage(0, memory.as_ptr(), 8);
+            }
+
             rpc_subscriptions.notify_roots(rooted_slots);
             if let Some(sender) = bank_notification_sender {
                 sender
@@ -3353,6 +3386,37 @@ impl ReplayStage {
                         SlotStateUpdate::Duplicate(duplicate_state),
                     );
                 }
+
+                // FIREDANCER: Send a slot completed notification.
+                let mut memory: [u8; 80] = [0; 80];
+
+                let total_txn_count = bank.executed_transaction_count();
+                let nonvote_txn_count = bank.non_vote_transaction_count_since_restart()
+                    .saturating_sub(bank.parent().map_or(0, |parent| parent.non_vote_transaction_count_since_restart()));
+                let failed_txn_count =  bank.transaction_error_count();
+                let nonvote_failed_txn_count =  bank.non_vote_transaction_error_count();
+                let compute_units = bank.read_cost_tracker().unwrap().block_cost();
+                let tips = bank.tips.load(Ordering::Relaxed);
+                let (transaction_fee, priority_fee) = bank.calculate_transaction_and_priority_fee_details(&bank.collector_fee_details.read().unwrap());
+
+                memory[0..8].copy_from_slice(&bank.slot().to_le_bytes());
+                memory[8..16].copy_from_slice(&total_txn_count.to_le_bytes());
+                memory[16..24].copy_from_slice(&nonvote_txn_count.to_le_bytes());
+                memory[24..32].copy_from_slice(&failed_txn_count.to_le_bytes());
+                memory[32..40].copy_from_slice(&nonvote_failed_txn_count.to_le_bytes());
+                memory[40..48].copy_from_slice(&compute_units.to_le_bytes());
+                memory[48..56].copy_from_slice(&transaction_fee.to_le_bytes());
+                memory[56..64].copy_from_slice(&priority_fee.to_le_bytes());
+                memory[64..72].copy_from_slice(&tips.to_le_bytes());
+                memory[72..80].copy_from_slice(&bank.parent_slot().to_le_bytes());
+
+                extern "C" {
+                    fn fd_ext_plugin_publish_replay_stage(kind: u8, data: *const u8, len: u64);
+                }
+                unsafe {
+                    fd_ext_plugin_publish_replay_stage(2, memory.as_ptr(), 80);
+                }
+
                 if let Some(sender) = bank_notification_sender {
                     sender
                         .sender
