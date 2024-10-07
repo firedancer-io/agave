@@ -566,6 +566,18 @@ impl ClusterInfoVoteListener {
                 }
                 if reached_threshold_results[1] {
                     new_optimistic_confirmed_slots.push((slot, hash));
+
+                    // FIREDANCER: Send a optimistically confirmed notification.
+                    let mut memory: [u8; 8] = [0; 8];
+                    memory[0..8].copy_from_slice(&slot.to_le_bytes());
+
+                    extern "C" {
+                        fn fd_ext_plugin_publish_vote_listener(kind: u8, data: *const u8, len: u64);
+                    }
+                    unsafe {
+                        fd_ext_plugin_publish_vote_listener(1, memory.as_ptr(), 8);
+                    }
+
                     // Notify subscribers about new optimistic confirmation
                     if let Some(sender) = bank_notification_sender {
                         sender
