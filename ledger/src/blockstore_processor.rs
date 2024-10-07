@@ -183,6 +183,11 @@ pub fn execute_batch(
     {
         check_block_cost_limits(bank, &commit_results, batch.sanitized_transactions())
     } else {
+        let _ = check_block_cost_limits(
+            bank,
+            &commit_results,
+            batch.sanitized_transactions(),
+        );
         Ok(())
     });
 
