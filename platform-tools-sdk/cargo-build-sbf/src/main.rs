@@ -5,7 +5,9 @@ use {
     itertools::Itertools,
     log::*,
     regex::Regex,
-    solana_file_download::download_file,
+    // FIREDANCER: We use a modified version of the solana-file-download crate,
+    // the code for which exists in the solana-download-utils crate.
+    solana_download_utils::download_file,
     solana_keypair::{write_keypair_file, Keypair},
     std::{
         borrow::Cow,
