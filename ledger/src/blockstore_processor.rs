@@ -202,6 +202,12 @@ pub fn execute_batch(
                 batch.sanitized_transactions(),
             )
         } else {
+            let _ = check_block_cost_limits(
+                bank,
+                &loaded_accounts_stats,
+                &execution_results,
+                batch.sanitized_transactions(),
+            );
             Ok(())
         });
 
