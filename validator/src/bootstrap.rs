@@ -388,7 +388,7 @@ pub fn attempt_download_genesis_and_snapshot(
     full_snapshot_archives_dir: &Path,
     incremental_snapshot_archives_dir: &Path,
     maximum_local_snapshot_age: Slot,
-    start_progress: &Arc<RwLock<ValidatorStartProgress>>,
+    start_progress: &Arc<solana_core::validator::VSPRwLock>,
     minimal_snapshot_download_speed: f32,
     maximum_snapshot_download_abort: u64,
     download_abort_count: &mut u64,
@@ -589,7 +589,7 @@ pub fn rpc_bootstrap(
     use_progress_bar: bool,
     maximum_local_snapshot_age: Slot,
     should_check_duplicate_instance: bool,
-    start_progress: &Arc<RwLock<ValidatorStartProgress>>,
+    start_progress: &Arc<solana_core::validator::VSPRwLock>,
     minimal_snapshot_download_speed: f32,
     maximum_snapshot_download_abort: u64,
     socket_addr_space: SocketAddrSpace,
@@ -1132,7 +1132,7 @@ fn download_snapshots(
     bootstrap_config: &RpcBootstrapConfig,
     use_progress_bar: bool,
     maximum_local_snapshot_age: Slot,
-    start_progress: &Arc<RwLock<ValidatorStartProgress>>,
+    start_progress: &Arc<solana_core::validator::VSPRwLock>,
     minimal_snapshot_download_speed: f32,
     maximum_snapshot_download_abort: u64,
     download_abort_count: &mut u64,
@@ -1147,6 +1147,22 @@ fn download_snapshots(
         incr: incremental_snapshot_hash,
     } = snapshot_hash.unwrap();
 
+    // FIREDANCER: Send an initial message so that the client can know
+    // the snapshot slot number, even if a snapshot is already downloaded
+    let init_snapshot_update = |snapshot_slot, is_full| -> Option<()> {
+        *start_progress.write().unwrap() = ValidatorStartProgress::DownloadingSnapshot {
+            slot: snapshot_slot,
+            rpc_addr: rpc_contact_info.rpc().unwrap(),
+            total_bytes: 0,
+            current_bytes: 0,
+            elapsed_secs: 0.0,
+            estimated_time_remaining_secs: 0.0,
+            throughput_bytes_sec: 0.0,
+            full_snapshot: is_full,
+        };
+        Some(())
+    };
+
     // If the local snapshots are new enough, then use 'em; no need to download new snapshots
     if should_use_local_snapshot(
         full_snapshot_archives_dir,
@@ -1156,8 +1172,14 @@ fn download_snapshots(
         incremental_snapshot_hash,
         bootstrap_config.incremental_snapshot_fetch,
     ) {
+        init_snapshot_update(full_snapshot_hash.0, true);
+        if let Some(incremental_snapshot_hash) = incremental_snapshot_hash {
+            init_snapshot_update(incremental_snapshot_hash.0, false);
+        }
         return Ok(());
     }
+
+    init_snapshot_update(full_snapshot_hash.0, true);
 
     // Check and see if we've already got the full snapshot; if not, download it
     if snapshot_utils::get_full_snapshot_archives(full_snapshot_archives_dir)
@@ -1186,6 +1208,11 @@ fn download_snapshots(
             full_snapshot_hash,
             SnapshotKind::FullSnapshot,
         )?;
+    }
+
+    *start_progress.write().unwrap() = ValidatorStartProgress::DownloadedFullSnapshot;
+    if let Some(incremental_snapshot_hash) = incremental_snapshot_hash {
+        init_snapshot_update(incremental_snapshot_hash.0, false);
     }
 
     if bootstrap_config.incremental_snapshot_fetch {
@@ -1234,7 +1261,7 @@ fn download_snapshot(
     validator_config: &ValidatorConfig,
     bootstrap_config: &RpcBootstrapConfig,
     use_progress_bar: bool,
-    start_progress: &Arc<RwLock<ValidatorStartProgress>>,
+    start_progress: &Arc<solana_core::validator::VSPRwLock>,
     minimal_snapshot_download_speed: f32,
     maximum_snapshot_download_abort: u64,
     download_abort_count: &mut u64,
@@ -1249,12 +1276,6 @@ fn download_snapshot(
         .snapshot_config
         .maximum_incremental_snapshot_archives_to_retain;
 
-    *start_progress.write().unwrap() = ValidatorStartProgress::DownloadingSnapshot {
-        slot: desired_snapshot_hash.0,
-        rpc_addr: rpc_contact_info
-            .rpc()
-            .ok_or_else(|| String::from("Invalid RPC address"))?,
-    };
     let desired_snapshot_hash = (
         desired_snapshot_hash.0,
         solana_runtime::snapshot_hash::SnapshotHash(desired_snapshot_hash.1),
@@ -1270,8 +1291,18 @@ fn download_snapshot(
         maximum_full_snapshot_archives_to_retain,
         maximum_incremental_snapshot_archives_to_retain,
         use_progress_bar,
-        &mut Some(Box::new(|download_progress: &DownloadProgressRecord| {
+        &mut Some(Box::new(move |download_progress: &DownloadProgressRecord| {
             debug!("Download progress: {download_progress:?}");
+            *start_progress.write().unwrap() = ValidatorStartProgress::DownloadingSnapshot {
+                slot: desired_snapshot_hash.0,
+                rpc_addr: rpc_contact_info.rpc().unwrap_or(SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0)), 0)),
+                total_bytes: download_progress.total_bytes,
+                current_bytes: download_progress.current_bytes,
+                elapsed_secs: download_progress.elapsed_time.as_secs_f64(),
+                estimated_time_remaining_secs: download_progress.estimated_remaining_time as f64,
+                throughput_bytes_sec: download_progress.last_throughput as f64,
+                full_snapshot: snapshot_kind.is_full_snapshot(),
+            };
             if download_progress.last_throughput < minimal_snapshot_download_speed
                 && download_progress.notification_count <= 1
                 && download_progress.percentage_done <= 2_f32
