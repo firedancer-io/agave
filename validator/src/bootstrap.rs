@@ -390,7 +390,7 @@ pub fn attempt_download_genesis_and_snapshot(
     full_snapshot_archives_dir: &Path,
     incremental_snapshot_archives_dir: &Path,
     maximum_local_snapshot_age: Slot,
-    start_progress: &Arc<RwLock<ValidatorStartProgress>>,
+    start_progress: &Arc<solana_core::validator::VSPRwLock>,
     minimal_snapshot_download_speed: f32,
     maximum_snapshot_download_abort: u64,
     download_abort_count: &mut u64,
@@ -589,7 +589,7 @@ pub fn rpc_bootstrap(
     use_progress_bar: bool,
     maximum_local_snapshot_age: Slot,
     should_check_duplicate_instance: bool,
-    start_progress: &Arc<RwLock<ValidatorStartProgress>>,
+    start_progress: &Arc<solana_core::validator::VSPRwLock>,
     minimal_snapshot_download_speed: f32,
     maximum_snapshot_download_abort: u64,
     socket_addr_space: SocketAddrSpace,
@@ -1132,7 +1132,7 @@ fn download_snapshots(
     bootstrap_config: &RpcBootstrapConfig,
     use_progress_bar: bool,
     maximum_local_snapshot_age: Slot,
-    start_progress: &Arc<RwLock<ValidatorStartProgress>>,
+    start_progress: &Arc<solana_core::validator::VSPRwLock>,
     minimal_snapshot_download_speed: f32,
     maximum_snapshot_download_abort: u64,
     download_abort_count: &mut u64,
@@ -1188,6 +1188,8 @@ fn download_snapshots(
         )?;
     }
 
+    *start_progress.write().unwrap() = ValidatorStartProgress::DownloadedFullSnapshot;
+
     if bootstrap_config.incremental_snapshot_fetch {
         // Check and see if we've already got the incremental snapshot; if not, download it
         if let Some(incremental_snapshot_hash) = incremental_snapshot_hash {
@@ -1234,7 +1236,7 @@ fn download_snapshot(
     validator_config: &ValidatorConfig,
     bootstrap_config: &RpcBootstrapConfig,
     use_progress_bar: bool,
-    start_progress: &Arc<RwLock<ValidatorStartProgress>>,
+    start_progress: &Arc<solana_core::validator::VSPRwLock>,
     minimal_snapshot_download_speed: f32,
     maximum_snapshot_download_abort: u64,
     download_abort_count: &mut u64,
@@ -1252,6 +1254,12 @@ fn download_snapshot(
     *start_progress.write().unwrap() = ValidatorStartProgress::DownloadingSnapshot {
         slot: desired_snapshot_hash.0,
         rpc_addr: rpc_contact_info.rpc().map_err(|err| format!("{err:?}"))?,
+        total_bytes: 0,
+        current_bytes: 0,
+        elapsed_secs: 0.0,
+        estimated_time_remaining_secs: 0.0,
+        throughput_bytes_sec: 0.0,
+        full_snapshot: snapshot_kind.is_full_snapshot(),
     };
     let desired_snapshot_hash = (
         desired_snapshot_hash.0,
@@ -1266,8 +1274,18 @@ fn download_snapshot(
         maximum_full_snapshot_archives_to_retain,
         maximum_incremental_snapshot_archives_to_retain,
         use_progress_bar,
-        &mut Some(Box::new(|download_progress: &DownloadProgressRecord| {
+        &mut Some(Box::new(move |download_progress: &DownloadProgressRecord| {
             debug!("Download progress: {download_progress:?}");
+            *start_progress.write().unwrap() = ValidatorStartProgress::DownloadingSnapshot {
+                slot: desired_snapshot_hash.0,
+                rpc_addr: rpc_contact_info.rpc().unwrap_or(SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0)), 0)),
+                total_bytes: download_progress.total_bytes,
+                current_bytes: download_progress.current_bytes,
+                elapsed_secs: download_progress.elapsed_time.as_secs_f64(),
+                estimated_time_remaining_secs: download_progress.estimated_remaining_time as f64,
+                throughput_bytes_sec: download_progress.last_throughput as f64,
+                full_snapshot: snapshot_kind.is_full_snapshot(),
+            };
             if download_progress.last_throughput < minimal_snapshot_download_speed
                 && download_progress.notification_count <= 1
                 && download_progress.percentage_done <= 2_f32
