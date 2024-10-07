@@ -1245,6 +1245,301 @@ impl Validator {
             ))
         };
 
+        const FIREDANCER_CLUSTER_NODE_CNT: u64 = 200*201 - 1; /* -1 because it doesn't include itself */
+        extern "C" {
+            fn fd_ext_plugin_publish_periodic(sig: u64, data: *const u8, len: u64);
+        }
+
+        fn firedancer_publish_gossip_peers(cluster_info: &Arc<ClusterInfo>) {
+            let all_peers = cluster_info.all_peers();
+
+            if all_peers.len() > FIREDANCER_CLUSTER_NODE_CNT as usize {
+                warn!("all_peers len {} exceeds max_elements {}", all_peers.len(), FIREDANCER_CLUSTER_NODE_CNT);
+            }
+
+            let len = usize::min(FIREDANCER_CLUSTER_NODE_CNT as usize, all_peers.len());
+
+            let mut memory = Vec::new();
+            memory.resize(8 + FIREDANCER_CLUSTER_NODE_CNT as usize * (58 + 12 * 34), 0);
+
+            memory[0..8].copy_from_slice(&len.to_le_bytes());
+
+            for (i, node) in all_peers.iter().enumerate().take(len) {
+                let version = cluster_info.get_node_version(node.0.pubkey());
+
+                use std::net::{SocketAddrV4, Ipv4Addr};
+                let gossip_socket = node.0.gossip().unwrap_or(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)));
+                let rpc_socket = node.0.rpc().unwrap_or(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)));
+                let rpc_pubsub_socket = node.0.rpc_pubsub().unwrap_or(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)));
+                let serve_repair_socket_udp = node.0.serve_repair(solana_client::connection_cache::Protocol::UDP).unwrap_or(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)));
+                let serve_repair_socket_quic = node.0.serve_repair(solana_client::connection_cache::Protocol::QUIC).unwrap_or(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)));
+
+                let tpu_socket_udp = node.0.tpu(solana_client::connection_cache::Protocol::UDP).unwrap_or(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)));
+                let tpu_socket_quic = node.0.tpu(solana_client::connection_cache::Protocol::QUIC).unwrap_or(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)));
+                let tvu_socket_udp = node.0.tvu(solana_client::connection_cache::Protocol::UDP).unwrap_or(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)));
+                let tvu_socket_quic = node.0.tvu(solana_client::connection_cache::Protocol::QUIC).unwrap_or(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)));
+                let tpu_forwards_socket_udp = node.0.tpu_forwards(solana_client::connection_cache::Protocol::UDP).unwrap_or(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)));
+                let tpu_forwards_socket_quic = node.0.tpu_forwards(solana_client::connection_cache::Protocol::QUIC).unwrap_or(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)));
+                let tpu_vote_socket = node.0.tpu_vote(Protocol::UDP).unwrap_or(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)));
+
+                let wallclock = node.0.wallclock();
+                let shred_version = node.0.shred_version();
+                let pubkey_bytes = node.0.pubkey().to_bytes();
+
+                let offset = 8 + i * (58 + 12 * 6);
+                memory[offset..offset+32].copy_from_slice(&pubkey_bytes);
+                memory[offset+32..offset+40].copy_from_slice(&wallclock.to_le_bytes());
+                memory[offset+40..offset+42].copy_from_slice(&shred_version.to_le_bytes());
+
+                if let Some(version) = version {
+                    memory[offset+42] = 1;
+                    memory[offset+43..offset+45].copy_from_slice(&version.major.to_le_bytes());
+                    memory[offset+45..offset+47].copy_from_slice(&version.minor.to_le_bytes());
+                    memory[offset+47..offset+49].copy_from_slice(&version.patch.to_le_bytes());
+                    let commit = version.commit;
+                    memory[offset+49] = 1;
+                    memory[offset+50..offset+54].copy_from_slice(&commit.to_le_bytes());
+                    memory[offset+54..offset+58].copy_from_slice(&version.feature_set.to_le_bytes());
+                } else {
+                    memory[offset+42..offset+58].fill(0);
+                }
+
+                let offset = offset + 58;
+                for (i, socket) in [
+                    gossip_socket,
+                    rpc_socket,
+                    rpc_pubsub_socket,
+                    serve_repair_socket_udp,
+                    serve_repair_socket_quic,
+                    tpu_socket_udp,
+                    tpu_socket_quic,
+                    tvu_socket_udp,
+                    tvu_socket_quic,
+                    tpu_forwards_socket_udp,
+                    tpu_forwards_socket_quic,
+                    tpu_vote_socket,
+                ].iter().enumerate() {
+                    let offset = offset + i * 6;
+                    let (ip, port) = match socket {
+                        SocketAddr::V4(addr) => (addr.ip().octets(), addr.port()),
+                        SocketAddr::V6(_) => ([0; 4], 0),
+                    };
+                    memory[offset..offset+4].copy_from_slice(&ip);
+                    memory[offset+4..offset+6].copy_from_slice(&port.to_le_bytes());
+                }
+            }
+
+            unsafe {
+                fd_ext_plugin_publish_periodic(4, memory.as_ptr(), 8 + len as u64 * (58 + 12 * 6));
+            }
+        }
+
+        fn firedancer_publish_vote_accounts(bank_forks: &Arc<RwLock<BankForks>>, block_commitment_cache: &Arc<RwLock<BlockCommitmentCache>>) {
+            use solana_sdk::commitment_config::CommitmentLevel;
+
+            let slot = block_commitment_cache.read().unwrap().slot_with_commitment(CommitmentLevel::Processed);
+            let bank = match bank_forks.read().unwrap().get(slot) {
+                Some(bank) => bank,
+                None => return,
+            };
+
+            let vote_accounts = bank.vote_accounts();
+            let epoch_vote_accounts = bank
+                .epoch_vote_accounts(bank.get_epoch_and_slot_index(bank.slot()).0)
+                .unwrap();
+
+            if vote_accounts.len() > FIREDANCER_CLUSTER_NODE_CNT as usize {
+                warn!("vote_accounts len {} exceeds max_elements {}", vote_accounts.len(), FIREDANCER_CLUSTER_NODE_CNT);
+            }
+
+            let len = usize::min(FIREDANCER_CLUSTER_NODE_CNT as usize, vote_accounts.len());
+
+            let mut memory = Vec::new();
+            memory.resize(8 + FIREDANCER_CLUSTER_NODE_CNT as usize * 112, 0);
+
+            memory[0..8].copy_from_slice(&len.to_le_bytes());
+
+            for (i, (vote_pubkey, (activated_stake, vote_account))) in vote_accounts.iter().enumerate().take(len) {
+                let vote_state = vote_account.vote_state();
+                let last_vote = if let Some(vote) = vote_state.votes.iter().last() {
+                    vote.slot()
+                } else {
+                    0
+                };
+
+                let epoch_credits = vote_state.epoch_credits().last().map(|x| *x).unwrap_or_default();
+                let epoch_credits = epoch_credits.1 - epoch_credits.2;
+
+                let offset = 8 + i * 112;
+                memory[offset..offset+32].copy_from_slice(&vote_pubkey.to_bytes());
+                memory[offset+32..offset+64].copy_from_slice(&vote_state.node_pubkey.to_bytes());
+                memory[offset+64..offset+72].copy_from_slice(&activated_stake.to_le_bytes());
+                memory[offset+72..offset+80].copy_from_slice(&last_vote.to_le_bytes());
+                memory[offset+80..offset+88].copy_from_slice(&vote_state.root_slot.unwrap_or(0).to_le_bytes());
+                memory[offset+88..offset+96].copy_from_slice(&epoch_credits.to_le_bytes());
+                memory[offset+96] = vote_state.commission;
+
+                let is_active = if bank.slot() >= 128 {
+                    last_vote > bank.slot() - 128
+                } else if bank.slot() == 0 {
+                    true
+                } else {
+                    last_vote > 0
+                };
+                let is_epoch_vote_account = epoch_vote_accounts.contains_key(vote_pubkey);
+                memory[offset+97] = if is_active { 0 } else { 1 };
+                memory[offset+98] = if is_epoch_vote_account { 1 } else { 0 };
+            }
+
+            unsafe {
+                fd_ext_plugin_publish_periodic(5, memory.as_ptr(), 8 + len as u64 * (58 + 12 * 6));
+            }
+        }
+
+        fn firedancer_publish_validator_info(account_indexes: &solana_accounts_db::accounts_index::AccountSecondaryIndexes, bank_forks: &Arc<RwLock<BankForks>>, block_commitment_cache: &Arc<RwLock<BlockCommitmentCache>>, force_accounts_scan: bool) {
+            use solana_accounts_db::accounts_index::AccountIndex;
+            use solana_accounts_db::accounts_index::IndexKey;
+            use solana_accounts_db::accounts_index::ScanConfig;
+            use bincode::serialized_size;
+            use solana_config_program::ConfigKeys;
+            use solana_sdk::commitment_config::CommitmentLevel;
+            use solana_sdk::account::ReadableAccount;
+            use solana_account_decoder::validator_info;
+            use solana_sdk::account::AccountSharedData;
+
+
+            fn account_publish(account: &AccountSharedData) -> Option<()> {
+                let keys = bincode::deserialize::<ConfigKeys>(&account.data()).ok()?;
+                if !keys.keys.contains(&(validator_info::id(), false)) { return None; }
+                let pubkey = keys.keys.get(1)?.0;
+                let keys_serialized_size = serialized_size(&keys).ok()? as usize;
+                let validator_info_string: String = bincode::deserialize(&account.data()[keys_serialized_size..]).ok()?;
+                let validator_info: serde_json::Map<_, _> = serde_json::from_str(&validator_info_string).ok()?;
+
+                let mut memory = Vec::new();
+                memory.resize(608, 0);
+                memory[0..32].copy_from_slice(&pubkey.to_bytes());
+
+                let name = validator_info.get("name").and_then(|x| x.as_str()).unwrap_or("");
+                let name = &name[..name.len().min(63)];
+                let name = std::ffi::CString::new(name).unwrap_or_default();
+                memory[32..32+name.as_bytes().len()+1].copy_from_slice(name.as_bytes_with_nul());
+
+                let website = validator_info.get("website").and_then(|x| x.as_str()).unwrap_or("");
+                let website = &website[..website.len().min(127)];
+                let website = std::ffi::CString::new(website).unwrap_or_default();
+                memory[96..96+website.as_bytes().len()+1].copy_from_slice(website.as_bytes_with_nul());
+
+                let details = validator_info.get("details").and_then(|x| x.as_str()).unwrap_or("");
+                let details = &details[..details.len().min(255)];
+                let details = std::ffi::CString::new(details).unwrap_or_default();
+                memory[224..224+details.as_bytes().len()+1].copy_from_slice(details.as_bytes_with_nul());
+
+                let iconurl = validator_info.get("iconUrl").and_then(|x| x.as_str()).unwrap_or("");
+                let iconurl = &iconurl[..iconurl.len().min(127)];
+                let iconurl = std::ffi::CString::new(iconurl).unwrap_or_default();
+                memory[480..480+iconurl.as_bytes().len()+1].copy_from_slice(iconurl.as_bytes_with_nul());
+
+                extern "C" {
+                    fn fd_ext_plugin_publish_validator_info(sig: u64, data: *const u8, len: u64);
+                }
+
+                unsafe {
+                    fd_ext_plugin_publish_validator_info(7, memory.as_ptr(), 608);
+                }
+
+                None
+            }
+
+            let slot = block_commitment_cache.read().unwrap().slot_with_commitment(CommitmentLevel::Processed);
+            let bank = match bank_forks.read().unwrap().get(slot) {
+                Some(bank) => bank,
+                None => return,
+            };
+
+            let acct_index_inactive = !account_indexes.contains(&AccountIndex::ProgramId) || !account_indexes.include_key(&solana_config_program::id());
+
+            // The account index is disabled. Do an unindexed scan
+            // instead. This is expensive, and we only scan if
+            // force_accounts_scan is true
+            if acct_index_inactive && !force_accounts_scan { return; }
+
+            let scan_fn = |acct_slot: Option<(&Pubkey, AccountSharedData, u64)>| {
+                match acct_slot {
+                    Some((_, account, _)) => {
+                        if *account.owner() == solana_config_program::id() {
+                            account_publish(&account);
+                        }
+                    }
+                    None => {}
+                }
+            };
+
+            let res = if acct_index_inactive {
+                bank.accounts().accounts_db.scan_accounts(&bank.ancestors, bank.bank_id(), scan_fn, &ScanConfig::new(true)).ok()
+            } else {
+                bank.accounts().accounts_db.index_scan_accounts(&bank.ancestors, bank.bank_id(), IndexKey::ProgramId(solana_config_program::id()), scan_fn, &ScanConfig::new(true)).ok().map(|_| ())
+            };
+
+            if res.is_none() {
+                warn!("Failed to perform config accounts scan");
+            }
+        }
+
+        fn firedancer_publish_balance(cluster_info: &ClusterInfo, vote_account_pubkey: &Pubkey, bank_forks: &Arc<RwLock<BankForks>>, block_commitment_cache: &Arc<RwLock<BlockCommitmentCache>>) {
+            use solana_sdk::account::ReadableAccount;
+            use solana_sdk::commitment_config::CommitmentLevel;
+
+            let slot = block_commitment_cache.read().unwrap().slot_with_commitment(CommitmentLevel::Processed);
+            let bank = match bank_forks.read().unwrap().get(slot) {
+                Some(bank) => bank,
+                None => return,
+            };
+
+            let identity_balance = bank.get_account(&cluster_info.id()).map(|account| account.lamports()).unwrap_or(0u64);
+            let mut memory: [u8; 16] = [0; 16];
+            memory[0..8].copy_from_slice(&(0u64).to_le_bytes()); /* 0 => validator identity account balance */
+            memory[8..16].copy_from_slice(&identity_balance.to_le_bytes());
+
+            unsafe {
+                fd_ext_plugin_publish_periodic(11, memory.as_ptr(), 16);
+            }
+
+            let vote_balance = bank.get_account(&vote_account_pubkey).map(|account| account.lamports()).unwrap_or(0u64);
+            let mut memory: [u8; 16] = [0; 16];
+            memory[0..8].copy_from_slice(&(1u64).to_le_bytes()); /* 1 => vote account balance */
+            memory[8..16].copy_from_slice(&vote_balance.to_le_bytes());
+
+            unsafe {
+                fd_ext_plugin_publish_periodic(11, memory.as_ptr(), 16);
+            }
+        }
+
+        {
+            let account_indexes = config.rpc_config.account_indexes.clone();
+            let bank_forks = bank_forks.clone();
+            let block_commitment_cache = block_commitment_cache.clone();
+            let _firedancer_val_info_thread = std::thread::spawn(move || {
+                // Force scan for validator info once, even if the accounts index is disabled
+                firedancer_publish_validator_info(&account_indexes, &bank_forks, &block_commitment_cache, true);
+            });
+        }
+
+        {
+            let cluster_info = cluster_info.clone();
+            let bank_forks = bank_forks.clone();
+            let block_commitment_cache = block_commitment_cache.clone();
+            let vote_account: Pubkey = vote_account.clone();
+            let _firedancer_gui_thread = std::thread::spawn(move || {
+                loop {
+                    firedancer_publish_gossip_peers(&cluster_info);
+                    firedancer_publish_vote_accounts(&bank_forks, &block_commitment_cache);
+                    firedancer_publish_balance(&cluster_info, &vote_account, &bank_forks, &block_commitment_cache);
+                    std::thread::sleep(std::time::Duration::from_secs(60));
+                }
+            });
+        }
+
         let rpc_override_health_check =
             Arc::new(AtomicBool::new(config.rpc_config.disable_health_check));
         let (
