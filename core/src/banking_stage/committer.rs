@@ -225,7 +225,8 @@ pub extern "C" fn fd_ext_bank_commit_txns( bank: *const std::ffi::c_void, txns: 
         load_and_execute_output.signature_count,
         load_and_execute_output.executed_transactions_count,
         load_and_execute_output.executed_non_vote_transactions_count,
-        load_and_execute_output.executed_with_successful_result_count);
+        load_and_execute_output.executed_with_successful_result_count,
+        load_and_execute_output.executed_non_vote_with_successful_result_count);
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -284,6 +285,7 @@ impl Committer {
         executed_transactions_count: usize,
         executed_non_vote_transactions_count: usize,
         executed_with_successful_result_count: usize,
+        executed_non_vote_with_successful_result_count: usize,
     ) -> (u64, Vec<CommitTransactionDetails>) {
         let executed_transactions = execution_results
             .iter()
@@ -302,6 +304,9 @@ impl Committer {
                 executed_non_vote_transactions_count: executed_non_vote_transactions_count as u64,
                 executed_with_failure_result_count: executed_transactions_count
                     .saturating_sub(executed_with_successful_result_count)
+                    as u64,
+                executed_non_vote_with_failure_result_count: executed_non_vote_transactions_count
+                    .saturating_sub(executed_non_vote_with_successful_result_count)
                     as u64,
                 signature_count,
             },
