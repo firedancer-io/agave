@@ -147,6 +147,10 @@ tokio = { workspace = true, features = ["full"] }
 tokio-util = { workspace = true }
 trees = { workspace = true }
 
+solana-commitment-config = { workspace = true }
+solana-config-program-client = { workspace = true }
+serde_json = { workspace = true }
+
 [dev-dependencies]
 agave-reserved-account-keys = { workspace = true }
 criterion = { workspace = true }
