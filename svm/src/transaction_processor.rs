@@ -111,7 +111,7 @@ impl ExecutionRecordingConfig {
 
 /// Configurations for processing transactions.
 #[derive(Default)]
-pub struct TransactionProcessingConfig<'a> {
+pub struct TransactionProcessingConfig<'a, 'b> {
     /// Encapsulates overridden accounts, typically used for transaction
     /// simulation.
     pub account_overrides: Option<&'a AccountOverrides>,
@@ -125,6 +125,8 @@ pub struct TransactionProcessingConfig<'a> {
     pub limit_to_load_programs: bool,
     /// Recording capabilities for transaction execution.
     pub recording_config: ExecutionRecordingConfig,
+    /// The accounts that are considered tip accounts.
+    pub tip_accounts: Option<&'b HashSet<Pubkey>>,
 }
 
 /// Runtime environment for transaction batch processing.
@@ -862,12 +864,33 @@ impl<FG: ForkGraph> TransactionBatchProcessor<FG> {
         // since this has been done before. See discussion in PR #4497 for details
         debug_assert!(transaction_accounts.len() == tx.account_keys().len());
 
+        fn tip_accounts_sum(
+            accounts: &[(Pubkey, AccountSharedData)],
+            message: &impl SVMMessage,
+            tip_accounts: &HashSet<Pubkey>,
+        ) -> u64 {
+            let mut lamports_sum: u64 = 0u64;
+            for i in 0..message.account_keys().len() {
+                if let Some((address, account)) = accounts.get(i) {
+                    if tip_accounts.contains(address) {
+                        lamports_sum = lamports_sum.checked_add(account.lamports()).unwrap();
+                    }
+                }
+            }
+            lamports_sum
+        }
+
         fn transaction_accounts_lamports_sum(
             accounts: &[(Pubkey, AccountSharedData)],
         ) -> Option<u128> {
             accounts.iter().try_fold(0u128, |sum, (_, account)| {
                 sum.checked_add(u128::from(account.lamports()))
             })
+        }
+
+        let mut tip_accounts_before_tx = 0;
+        if let Some(tip_accounts) = config.tip_accounts {
+            tip_accounts_before_tx = tip_accounts_sum(&transaction_accounts, tx, tip_accounts);
         }
 
         let lamports_before_tx =
@@ -985,6 +1008,11 @@ impl<FG: ForkGraph> TransactionBatchProcessor<FG> {
         }
         let status = status.map(|_| ());
 
+        let mut tip_accounts_after_tx = 0;
+        if let Some(tip_accounts) = config.tip_accounts {
+            tip_accounts_after_tx = tip_accounts_sum(&accounts, tx, tip_accounts);
+        }
+
         loaded_transaction.accounts = accounts;
         execute_timings.details.total_account_count += loaded_transaction.accounts.len() as u64;
         execute_timings.details.changed_account_count += touched_account_count;
@@ -997,6 +1025,15 @@ impl<FG: ForkGraph> TransactionBatchProcessor<FG> {
             None
         };
 
+        /* This logic is done this way, rather than tips * 95 / 100 to match the order of
+           operations and arithmetic precendence in the tip payment program itself. */
+        let tips = tip_accounts_after_tx.saturating_sub(tip_accounts_before_tx);
+        let tips = tips - tips
+            .checked_mul(5)
+            .unwrap()
+            .checked_div(100)
+            .unwrap();
+
         ExecutedTransaction {
             execution_details: TransactionExecutionDetails {
                 status,
@@ -1005,6 +1042,7 @@ impl<FG: ForkGraph> TransactionBatchProcessor<FG> {
                 return_data,
                 executed_units,
                 accounts_data_len_delta,
+                tips,
             },
             loaded_transaction,
             programs_modified_by_tx: program_cache_for_tx_batch.drain_modified_entries(),
