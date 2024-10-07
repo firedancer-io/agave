@@ -103,6 +103,27 @@ impl Bank {
         reward
     }
 
+    pub fn calculate_transaction_and_priority_fee_details(
+        &self,
+        fee_details: &CollectorFeeDetails,
+    ) -> (u64, u64) {
+        let (transaction_fee, _) = if fee_details.transaction_fee != 0 {
+            self.fee_rate_governor.burn(fee_details.transaction_fee)
+        } else {
+            (0, 0)
+        };
+        let (priority_fee, _) = if self.feature_set.is_active(&reward_full_priority_fee::id()) {
+            (fee_details.priority_fee, 0)
+        } else {
+            if fee_details.priority_fee != 0 {
+                self.fee_rate_governor.burn(fee_details.priority_fee)
+            } else {
+                (0, 0)
+            }
+        };
+        (transaction_fee, priority_fee)
+    }
+
     fn calculate_reward_and_burn_fees(&self, fee: u64) -> (u64, u64) {
         self.fee_rate_governor.burn(fee)
     }
