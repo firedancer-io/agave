@@ -3409,7 +3409,9 @@ impl AccountsDb {
     /// Pre-scans the write cache to capture entries not yet flushed to the accounts index, then
     /// deduplicates against the index scan, calling `scan_func` with the newest version of each
     /// account
-    pub(crate) fn scan_accounts<F>(
+    // FIREDANCER: This is made public for conveninent use by code that sends
+    // account information to the GUI.
+    pub fn scan_accounts<F>(
         &self,
         ancestors: &Ancestors,
         bank_id: BankId,
@@ -3504,7 +3506,9 @@ impl AccountsDb {
         Ok(())
     }
 
-    pub(crate) fn index_scan_accounts<F>(
+    // FIREDANCER: This is made public for conveninent use by code that sends
+    // account information to the GUI.
+    pub fn index_scan_accounts<F>(
         &self,
         ancestors: &Ancestors,
         bank_id: BankId,
