@@ -42,6 +42,8 @@ pub struct TransactionExecutionDetails {
     /// The change in accounts data len for this transaction.
     /// NOTE: This value is valid IFF `status` is `Ok`.
     pub accounts_data_len_delta: i64,
+    /// FIREDANCER: Store tips for the GUI
+    pub tips: u64,
 }
 
 impl TransactionExecutionDetails {
