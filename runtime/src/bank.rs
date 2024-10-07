@@ -316,7 +316,7 @@ impl AddAssign for SquashTiming {
 }
 
 #[derive(Debug, Default, PartialEq)]
-pub(crate) struct CollectorFeeDetails {
+pub struct CollectorFeeDetails {
     transaction_fee: u64,
     priority_fee: u64,
 }
@@ -864,7 +864,7 @@ pub struct Bank {
     collector_id: Pubkey,
 
     /// Fees that have been collected
-    collector_fees: AtomicU64,
+    pub collector_fees: AtomicU64,
 
     /// Track cluster signature throughput and adjust fee rate
     pub(crate) fee_rate_governor: FeeRateGovernor,
@@ -943,7 +943,7 @@ pub struct Bank {
     check_program_modification_slot: bool,
 
     /// Collected fee details
-    collector_fee_details: RwLock<CollectorFeeDetails>,
+    pub collector_fee_details: RwLock<CollectorFeeDetails>,
 
     /// The compute budget to use for transaction execution.
     compute_budget: Option<ComputeBudget>,
@@ -4108,6 +4108,8 @@ impl Bank {
         if self.feature_set.is_active(&reward_full_priority_fee::id()) {
             self.filter_program_errors_and_collect_fee_details(&processing_results)
         } else {
+            // FIREDANCER: GUI needs the full fee details to be filled in.
+            let _ = self.filter_program_errors_and_collect_fee_details(&processing_results);
             self.filter_program_errors_and_collect_fee(&processing_results)
         };
 
