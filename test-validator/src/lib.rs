@@ -14,7 +14,7 @@ use {
     solana_core::{
         admin_rpc_post_init::AdminRpcRequestMetadataPostInit,
         consensus::tower_storage::TowerStorage,
-        validator::{Validator, ValidatorConfig, ValidatorStartProgress},
+        validator::{Validator, ValidatorConfig, /*ValidatorStartProgress*/},
     },
     solana_geyser_plugin_manager::{
         geyser_plugin_manager::GeyserPluginManager, GeyserPluginManagerRequest,
@@ -123,7 +123,7 @@ pub struct TestValidatorGenesis {
     epoch_schedule: Option<EpochSchedule>,
     node_config: TestValidatorNodeConfig,
     pub validator_exit: Arc<RwLock<Exit>>,
-    pub start_progress: Arc<RwLock<ValidatorStartProgress>>,
+    pub start_progress: Arc<solana_core::validator::VSPRwLock>,
     pub authorized_voter_keypairs: Arc<RwLock<Vec<Arc<Keypair>>>>,
     pub staked_nodes_overrides: Arc<RwLock<HashMap<Pubkey, u64>>>,
     pub max_ledger_shreds: Option<u64>,
@@ -155,7 +155,7 @@ impl Default for TestValidatorGenesis {
             epoch_schedule: Option::<EpochSchedule>::default(),
             node_config: TestValidatorNodeConfig::default(),
             validator_exit: Arc::<RwLock<Exit>>::default(),
-            start_progress: Arc::<RwLock<ValidatorStartProgress>>::default(),
+            start_progress: Arc::<solana_core::validator::VSPRwLock>::default(),
             authorized_voter_keypairs: Arc::<RwLock<Vec<Arc<Keypair>>>>::default(),
             staked_nodes_overrides: Arc::new(RwLock::new(HashMap::new())),
             max_ledger_shreds: Option::<u64>::default(),
