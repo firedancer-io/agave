@@ -1964,7 +1964,7 @@ where
     let mut ledger_lock = ledger_lockfile(&ledger_path);
     let _ledger_write_guard = lock_ledger(&ledger_path, &mut ledger_lock);
 
-    let start_progress = Arc::new(RwLock::new(ValidatorStartProgress::default()));
+    let start_progress = Arc::new(solana_core::validator::VSPRwLock::new());
     let admin_service_post_init = Arc::new(RwLock::new(None));
     let (rpc_to_plugin_manager_sender, rpc_to_plugin_manager_receiver) =
         if starting_with_geyser_plugins {
