@@ -24,8 +24,10 @@ pub enum ScanError {
     Aborted(String),
 }
 
+// FIREDANCER: This is made public for convenient use by code that sends
+// account information to the GUI.
 #[derive(Debug, Default)]
-pub(crate) struct ScanConfig {
+pub struct ScanConfig {
     /// checked by the scan. When true, abort scan.
     pub(crate) abort: Option<Arc<AtomicBool>>,
 }
