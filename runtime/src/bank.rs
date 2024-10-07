@@ -543,6 +543,7 @@ impl PartialEq for Bank {
             transaction_count,
             non_vote_transaction_count_since_restart: _,
             transaction_error_count: _,
+            non_vote_transaction_error_count: _,
             transaction_entries_count: _,
             transactions_per_entry_max: _,
             tick_height,
@@ -784,6 +785,9 @@ pub struct Bank {
     /// The number of transaction errors in this slot
     transaction_error_count: AtomicU64,
 
+    /// The number of non-vote transaction errors since boot
+    non_vote_transaction_error_count: AtomicU64,
+
     /// The number of transaction entries in this slot
     transaction_entries_count: AtomicU64,
 
@@ -988,6 +992,7 @@ pub struct ProcessedTransactionCounts {
     pub processed_transactions_count: u64,
     pub processed_non_vote_transactions_count: u64,
     pub processed_with_successful_result_count: u64,
+    pub processed_non_vote_with_successful_result_count: u64,
     pub signature_count: u64,
 }
 
@@ -1094,6 +1099,7 @@ impl Bank {
             transaction_count: AtomicU64::default(),
             non_vote_transaction_count_since_restart: AtomicU64::default(),
             transaction_error_count: AtomicU64::default(),
+            non_vote_transaction_error_count: AtomicU64::default(),
             transaction_entries_count: AtomicU64::default(),
             transactions_per_entry_max: AtomicU64::default(),
             tick_height: AtomicU64::default(),
@@ -1344,6 +1350,7 @@ impl Bank {
                 parent.non_vote_transaction_count_since_restart(),
             ),
             transaction_error_count: AtomicU64::new(0),
+            non_vote_transaction_error_count: AtomicU64::new(0),
             transaction_entries_count: AtomicU64::new(0),
             transactions_per_entry_max: AtomicU64::new(0),
             // we will .clone_with_epoch() this soon after stake data update; so just .clone() for now
@@ -1832,6 +1839,7 @@ impl Bank {
             transaction_count: AtomicU64::new(fields.transaction_count),
             non_vote_transaction_count_since_restart: AtomicU64::default(),
             transaction_error_count: AtomicU64::default(),
+            non_vote_transaction_error_count: AtomicU64::default(),
             transaction_entries_count: AtomicU64::default(),
             transactions_per_entry_max: AtomicU64::default(),
             tick_height: AtomicU64::new(fields.tick_height),
@@ -3380,6 +3388,9 @@ impl Bank {
             match processing_result.flattened_result() {
                 Ok(()) => {
                     processed_counts.processed_with_successful_result_count += 1;
+                    if !tx.is_simple_vote_transaction() {
+                        processed_counts.processed_non_vote_with_successful_result_count += 1;
+                    }
                 }
                 Err(err) => {
                     if err_count.0 == 0 {
@@ -3600,6 +3611,7 @@ impl Bank {
             processed_transactions_count,
             processed_non_vote_transactions_count,
             processed_with_successful_result_count,
+            processed_non_vote_with_successful_result_count,
             signature_count,
         } = *processed_counts;
 
@@ -3613,6 +3625,11 @@ impl Bank {
             processed_transactions_count.saturating_sub(processed_with_successful_result_count);
         self.transaction_error_count
             .fetch_add(processed_with_failure_result_count, Relaxed);
+
+        let processed_non_vote_with_failure_result_count =
+            processed_non_vote_transactions_count.saturating_sub(processed_non_vote_with_successful_result_count);
+        self.non_vote_transaction_error_count
+            .fetch_add(processed_non_vote_with_failure_result_count, Relaxed);
 
         if processed_transactions_count > 0 {
             self.is_delta.store(true, Relaxed);
@@ -4455,6 +4472,10 @@ impl Bank {
 
     pub fn transaction_error_count(&self) -> u64 {
         self.transaction_error_count.load(Relaxed)
+    }
+
+    pub fn non_vote_transaction_error_count(&self) -> u64 {
+        self.non_vote_transaction_error_count.load(Relaxed)
     }
 
     pub fn transaction_entries_count(&self) -> u64 {
