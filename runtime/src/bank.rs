@@ -411,6 +411,35 @@ pub struct TransactionLogInfo {
     pub log_messages: TransactionLogMessages,
 }
 
+use solana_pubkey::pubkey;
+const MAINNET_TIP_ACCOUNTS1: [Pubkey; 8] = [
+    pubkey!("DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXjh"),
+    pubkey!("HFqU5x63VTqvQss8hp11i4wVV8bD44PvwucfZ2bU7gRe"),
+    pubkey!("96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5"),
+    pubkey!("ADaUMid9yfUytqMBgopwjb2DTLSokTSzL1zt6iGPaS49"),
+    pubkey!("ADuUkR4vqLUMWXxW9gh6D6L8pMSawimctcNZ5pGwDcEt"),
+    pubkey!("DttWaMuVvTiduZRnguLF7jNxTgiMBZ1hyAumKUiL2KRL"),
+    pubkey!("3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSdeBnizKZ6jT"),
+    pubkey!("Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY"),
+];
+const TESTNET_TIP_ACCOUNTS1: [Pubkey; 8] = [
+    pubkey!("BkMx5bRzQeP6tUZgzEs3xeDWJfQiLYvNDqSgmGZKYJDq"),
+    pubkey!("CwWZzvRgmxj9WLLhdoWUVrHZ1J8db3w2iptKuAitHqoC"),
+    pubkey!("4uRnem4BfVpZBv7kShVxUYtcipscgZMSHi3B9CSL6gAA"),
+    pubkey!("AzfhMPcx3qjbvCK3UUy868qmc5L451W341cpFqdL3EBe"),
+    pubkey!("84DrGKhycCUGfLzw8hXsUYX9SnWdh2wW3ozsTPrC5xyg"),
+    pubkey!("7aewvu8fMf1DK4fKoMXKfs3h3wpAQ7r7D8T1C71LmMF"),
+    pubkey!("G2d63CEgKBdgtpYT2BuheYQ9HFuFCenuHLNyKVpqAuSD"),
+    pubkey!("F7ThiQUBYiEcyaxpmMuUeACdoiSLKg4SZZ8JSfpFNwAf"),
+];
+
+use mockall::lazy_static;
+lazy_static! {
+    pub static ref MAINNET_TIP_ACCOUNTS: HashSet<Pubkey> = MAINNET_TIP_ACCOUNTS1.iter().cloned().collect();
+    pub static ref TESTNET_TIP_ACCOUNTS: HashSet<Pubkey> = TESTNET_TIP_ACCOUNTS1.iter().cloned().collect();
+    pub static ref EMPTY_TIP_ACCOUNTS: HashSet<Pubkey> = HashSet::new();
+}
+
 #[derive(Default, Debug)]
 pub struct TransactionLogCollector {
     // All the logs collected for from this Bank.  Exact contents depend on the
@@ -542,6 +571,7 @@ impl PartialEq for Bank {
             parent_hash,
             parent_slot,
             hard_forks,
+            tips: _,
             transaction_count,
             non_vote_transaction_count_since_restart: _,
             transaction_error_count: _,
@@ -777,6 +807,9 @@ pub struct Bank {
     /// slots to hard fork at
     hard_forks: Arc<RwLock<HardForks>>,
 
+    /// The total tips paid during the slot
+    pub tips: AtomicU64,
+
     /// The number of committed transactions since genesis.
     transaction_count: AtomicU64,
 
@@ -842,8 +875,10 @@ pub struct Bank {
     /// The pubkey to send transactions fees to.
     collector_id: Pubkey,
 
+    //  FIREDANCER: This is made public for convenient use by code that sends
+    //  fee information for the GUI.
     /// Fees that have been collected
-    collector_fees: AtomicU64,
+    pub collector_fees: AtomicU64,
 
     /// Track cluster signature throughput and adjust fee rate
     pub(crate) fee_rate_governor: FeeRateGovernor,
@@ -909,8 +944,10 @@ pub struct Bank {
 
     check_program_modification_slot: bool,
 
+    //  FIREDANCER: This is made public for convenient use by code that sends
+    //  fee information for the GUI.
     /// Collected fee details
-    collector_fee_details: RwLock<CollectorFeeDetails>,
+    pub collector_fee_details: RwLock<CollectorFeeDetails>,
 
     /// The compute budget to use for transaction execution.
     compute_budget: Option<ComputeBudget>,
@@ -1103,6 +1140,7 @@ impl Bank {
             parent_hash: Hash::default(),
             parent_slot: Slot::default(),
             hard_forks: Arc::<RwLock<HardForks>>::default(),
+            tips: AtomicU64::default(),
             transaction_count: AtomicU64::default(),
             non_vote_transaction_count_since_restart: AtomicU64::default(),
             transaction_error_count: AtomicU64::default(),
@@ -1353,6 +1391,7 @@ impl Bank {
             capitalization: AtomicU64::new(parent.capitalization()),
             vote_only_bank,
             inflation: parent.inflation.clone(),
+            tips: AtomicU64::new(0),
             transaction_count: AtomicU64::new(parent.transaction_count()),
             non_vote_transaction_count_since_restart: AtomicU64::new(
                 parent.non_vote_transaction_count_since_restart(),
@@ -1845,6 +1884,7 @@ impl Bank {
             parent_hash: fields.parent_hash,
             parent_slot: fields.parent_slot,
             hard_forks: Arc::new(RwLock::new(fields.hard_forks)),
+            tips: AtomicU64::default(),
             transaction_count: AtomicU64::new(fields.transaction_count),
             non_vote_transaction_count_since_restart: AtomicU64::default(),
             transaction_error_count: AtomicU64::default(),
@@ -3157,6 +3197,7 @@ impl Bank {
                     enable_return_data_recording: true,
                     enable_transaction_balance_recording: true,
                 },
+                tip_accounts: None,
             },
         );
 
@@ -3707,6 +3748,18 @@ impl Bank {
             }
         });
 
+        let mut tips: u64 = 0;
+        for processing_result in &processing_results {
+            if let Some(ProcessedTransaction::Executed(executed_tx)) =
+                processing_result.processed_transaction()
+            {
+                if executed_tx.was_successful() {
+                    tips += executed_tx.execution_details.tips;
+                }
+            }
+        }
+        self.tips.fetch_add(tips, Relaxed);
+
         let accounts_data_len_delta = processing_results
             .iter()
             .filter_map(|processing_result| processing_result.processed_transaction())
@@ -3885,6 +3938,15 @@ impl Bank {
             impl FnOnce(&mut ExecuteTimings, &[TransactionProcessingResult]) -> PreCommitResult<'a>,
         >,
     ) -> Result<(Vec<TransactionCommitResult>, Option<BalanceCollector>)> {
+
+        let tip_accounts = if self.cluster_type() == ClusterType::MainnetBeta {
+            &*MAINNET_TIP_ACCOUNTS
+        } else if self.cluster_type() == ClusterType::Testnet {
+            &*TESTNET_TIP_ACCOUNTS
+        } else {
+            &*EMPTY_TIP_ACCOUNTS
+        };
+
         let LoadAndExecuteTransactionsOutput {
             processing_results,
             processed_counts,
@@ -3900,6 +3962,7 @@ impl Bank {
                 log_messages_bytes_limit,
                 limit_to_load_programs: false,
                 recording_config,
+                tip_accounts: Some(tip_accounts),
             },
         );
 
