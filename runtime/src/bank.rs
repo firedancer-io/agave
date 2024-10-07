@@ -312,7 +312,9 @@ impl AddAssign for SquashTiming {
 }
 
 #[derive(Debug, Default, PartialEq)]
-pub(crate) struct CollectorFeeDetails {
+// FIREDANCER: This is made public for convenient use by code that sends
+// fee information for the GUI.
+pub struct CollectorFeeDetails {
     transaction_fee: u64,
     priority_fee: u64,
 }
@@ -426,6 +428,34 @@ pub struct TransactionLogInfo {
     pub result: Result<()>,
     pub is_vote: bool,
     pub log_messages: TransactionLogMessages,
+}
+
+use solana_sdk::pubkey;
+const MAINNET_TIP_ACCOUNTS1: [Pubkey; 8] = [
+    pubkey!("DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXjh"),
+    pubkey!("HFqU5x63VTqvQss8hp11i4wVV8bD44PvwucfZ2bU7gRe"),
+    pubkey!("96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5"),
+    pubkey!("ADaUMid9yfUytqMBgopwjb2DTLSokTSzL1zt6iGPaS49"),
+    pubkey!("ADuUkR4vqLUMWXxW9gh6D6L8pMSawimctcNZ5pGwDcEt"),
+    pubkey!("DttWaMuVvTiduZRnguLF7jNxTgiMBZ1hyAumKUiL2KRL"),
+    pubkey!("3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSdeBnizKZ6jT"),
+    pubkey!("Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY"),
+];
+const TESTNET_TIP_ACCOUNTS1: [Pubkey; 8] = [
+    pubkey!("4xgEmT58RwTNsF5xm2RMYCnR1EVukdK8a1i2qFjnJFu3"),
+    pubkey!("aTtUk2DHgLhKZRDjePq6eiHRKC1XXFMBiSUfQ2JNDbN"),
+    pubkey!("9ttgPBBhRYFuQccdR1DSnb7hydsWANoDsV3P9kaGMCEh"),
+    pubkey!("EoW3SUQap7ZeynXQ2QJ847aerhxbPVr843uMeTfc9dxM"),
+    pubkey!("B1mrQSpdeMU9gCvkJ6VsXVVoYjRGkNA7TtjMyqxrhecH"),
+    pubkey!("E2eSqe33tuhAHKTrwky5uEjaVqnb2T9ns6nHHUrN8588"),
+    pubkey!("9n3d1K5YD2vECAbRFhFFGYNNjiXtHXJWn9F31t89vsAV"),
+    pubkey!("ARTtviJkLLt6cHGQDydfo1Wyk6M4VGZdKZ2ZhdnJL336"),
+];
+
+lazy_static! {
+    pub static ref MAINNET_TIP_ACCOUNTS: HashSet<Pubkey> = MAINNET_TIP_ACCOUNTS1.iter().cloned().collect();
+    pub static ref TESTNET_TIP_ACCOUNTS: HashSet<Pubkey> = TESTNET_TIP_ACCOUNTS1.iter().cloned().collect();
+    pub static ref EMPTY_TIP_ACCOUNTS: HashSet<Pubkey> = HashSet::new();
 }
 
 #[derive(Default, Debug)]
@@ -567,6 +597,7 @@ impl PartialEq for Bank {
             parent_hash,
             parent_slot,
             hard_forks,
+            tips: _,
             transaction_count,
             non_vote_transaction_count_since_restart: _,
             transaction_error_count: _,
@@ -807,6 +838,9 @@ pub struct Bank {
     /// slots to hard fork at
     hard_forks: Arc<RwLock<HardForks>>,
 
+    /// The total tips paid during the slot
+    pub tips: AtomicU64,
+
     /// The number of committed transactions since genesis.
     transaction_count: AtomicU64,
 
@@ -869,8 +903,10 @@ pub struct Bank {
     /// The pubkey to send transactions fees to.
     collector_id: Pubkey,
 
+    //  FIREDANCER: This is made public for convenient use by code that sends
+    //  fee information for the GUI.
     /// Fees that have been collected
-    collector_fees: AtomicU64,
+    pub collector_fees: AtomicU64,
 
     /// Track cluster signature throughput and adjust fee rate
     pub(crate) fee_rate_governor: FeeRateGovernor,
@@ -948,8 +984,10 @@ pub struct Bank {
 
     check_program_modification_slot: bool,
 
+    //  FIREDANCER: This is made public for convenient use by code that sends
+    //  fee information for the GUI.
     /// Collected fee details
-    collector_fee_details: RwLock<CollectorFeeDetails>,
+    pub collector_fee_details: RwLock<CollectorFeeDetails>,
 
     /// The compute budget to use for transaction execution.
     compute_budget: Option<ComputeBudget>,
@@ -1131,6 +1169,7 @@ impl Bank {
             parent_hash: Hash::default(),
             parent_slot: Slot::default(),
             hard_forks: Arc::<RwLock<HardForks>>::default(),
+            tips: AtomicU64::default(),
             transaction_count: AtomicU64::default(),
             non_vote_transaction_count_since_restart: AtomicU64::default(),
             transaction_error_count: AtomicU64::default(),
@@ -1390,6 +1429,7 @@ impl Bank {
             capitalization: AtomicU64::new(parent.capitalization()),
             vote_only_bank,
             inflation: parent.inflation.clone(),
+            tips: AtomicU64::new(0),
             transaction_count: AtomicU64::new(parent.transaction_count()),
             non_vote_transaction_count_since_restart: AtomicU64::new(
                 parent.non_vote_transaction_count_since_restart(),
@@ -1786,6 +1826,7 @@ impl Bank {
             parent_hash: fields.parent_hash,
             parent_slot: fields.parent_slot,
             hard_forks: Arc::new(RwLock::new(fields.hard_forks)),
+            tips: AtomicU64::default(),
             transaction_count: AtomicU64::new(fields.transaction_count),
             non_vote_transaction_count_since_restart: AtomicU64::default(),
             transaction_error_count: AtomicU64::default(),
@@ -3297,6 +3338,7 @@ impl Bank {
                     enable_return_data_recording: true,
                 },
                 transaction_account_lock_limit: Some(self.get_transaction_account_lock_limit()),
+                tip_accounts: None,
             },
         );
 
@@ -3814,6 +3856,18 @@ impl Bank {
             }
         });
 
+        let mut tips: u64 = 0;
+        for processing_result in &processing_results {
+            if let Some(ProcessedTransaction::Executed(executed_tx)) =
+                processing_result.processed_transaction()
+            {
+                if executed_tx.was_successful() {
+                    tips += executed_tx.execution_details.tips;
+                }
+            }
+        }
+        self.tips.fetch_add(tips, Relaxed);
+
         let accounts_data_len_delta = processing_results
             .iter()
             .filter_map(|processing_result| processing_result.processed_transaction())
@@ -3833,6 +3887,8 @@ impl Bank {
         if self.feature_set.is_active(&reward_full_priority_fee::id()) {
             self.filter_program_errors_and_collect_fee_details(&processing_results)
         } else {
+            // FIREDANCER: GUI needs the full fee details to be filled in.
+            let _ = self.filter_program_errors_and_collect_fee_details(&processing_results);
             self.filter_program_errors_and_collect_fee(&processing_results)
         };
 
@@ -4653,6 +4709,14 @@ impl Bank {
             vec![]
         };
 
+        let tip_accounts = if self.cluster_type() == ClusterType::MainnetBeta {
+            &*MAINNET_TIP_ACCOUNTS
+        } else if self.cluster_type() == ClusterType::Testnet {
+            &*TESTNET_TIP_ACCOUNTS
+        } else {
+            &*EMPTY_TIP_ACCOUNTS
+        };
+
         let LoadAndExecuteTransactionsOutput {
             processing_results,
             processed_counts,
@@ -4669,6 +4733,7 @@ impl Bank {
                 limit_to_load_programs: false,
                 recording_config,
                 transaction_account_lock_limit: Some(self.get_transaction_account_lock_limit()),
+                tip_accounts: Some(tip_accounts),
             },
         );
 
