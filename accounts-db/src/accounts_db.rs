@@ -3373,7 +3373,9 @@ impl AccountsDb {
         }
     }
 
-    pub(crate) fn scan_accounts<F>(
+    // FIREDANCER: This is made public for conveninent use by code that sends
+    // account information to the GUI.
+    pub fn scan_accounts<F>(
         &self,
         ancestors: &Ancestors,
         bank_id: BankId,
@@ -3436,7 +3438,9 @@ impl AccountsDb {
         Ok(())
     }
 
-    pub(crate) fn index_scan_accounts<F>(
+    // FIREDANCER: This is made public for conveninent use by code that sends
+    // account information to the GUI.
+    pub fn index_scan_accounts<F>(
         &self,
         ancestors: &Ancestors,
         bank_id: BankId,
