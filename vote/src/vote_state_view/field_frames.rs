@@ -276,6 +276,7 @@ impl<'a> ListView<'a, AuthorizedVotersListFrame> {
 }
 
 #[repr(C)]
+#[derive(Default)]
 pub struct EpochCreditsItem {
     epoch: [u8; 8],
     credits: [u8; 8],
