@@ -95,6 +95,18 @@ impl Bank {
         reward
     }
 
+    pub fn calculate_transaction_and_priority_fee_details(
+        &self,
+        fee_details: &CollectorFeeDetails,
+    ) -> (u64, u64) {
+        let (transaction_fee, _) = if fee_details.transaction_fee != 0 {
+            self.fee_rate_governor.burn(fee_details.transaction_fee)
+        } else {
+            (0, 0)
+        };
+        (transaction_fee, fee_details.priority_fee)
+    }
+
     pub fn calculate_reward_and_burn_fee_details(
         &self,
         fee_details: &CollectorFeeDetails,
