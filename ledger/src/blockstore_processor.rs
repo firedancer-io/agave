@@ -321,6 +321,11 @@ fn check_block_cost_limits_if_enabled(
     {
         check_block_cost_limits(bank, processing_results, batch.sanitized_transactions())
     } else {
+        let _ = check_block_cost_limits(
+            bank,
+            processing_results,
+            batch.sanitized_transactions(),
+        );
         Ok(())
     });
 

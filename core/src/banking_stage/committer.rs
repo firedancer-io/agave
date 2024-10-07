@@ -110,6 +110,16 @@ pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_vo
     let mut batch = TransactionBatch::new(lock_results, bank.as_ref(), OwnedOrBorrowed::Borrowed(txns));
     batch.set_needs_unlock(false);
 
+    use solana_runtime::bank::{MAINNET_TIP_ACCOUNTS, TESTNET_TIP_ACCOUNTS, EMPTY_TIP_ACCOUNTS};
+    use solana_sdk::genesis_config::ClusterType;
+    let tip_accounts = if bank.cluster_type() == ClusterType::MainnetBeta {
+        &*MAINNET_TIP_ACCOUNTS
+    } else if bank.cluster_type() == ClusterType::Testnet {
+        &*TESTNET_TIP_ACCOUNTS
+    } else {
+        &*EMPTY_TIP_ACCOUNTS
+    };
+
     let mut timings = ExecuteTimings::default();
     let transaction_status_sender_enabled = committer.transaction_status_sender_enabled();
     let output = bank.load_and_execute_transactions(&batch, MAX_PROCESSING_AGE, &mut timings,
@@ -122,6 +132,7 @@ pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_vo
             limit_to_load_programs: false,
             recording_config: ExecutionRecordingConfig::new_single_setting(transaction_status_sender_enabled),
             transaction_account_lock_limit: Some(64),
+            tip_accounts: Some(tip_accounts),
         }
     );
 
