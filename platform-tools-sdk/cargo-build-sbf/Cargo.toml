@@ -22,7 +22,9 @@ log = { workspace = true, features = ["std"] }
 regex = { workspace = true }
 reqwest = { workspace = true, features = ["blocking", "rustls-tls"] }
 semver = { workspace = true }
-solana-file-download = { workspace = true }
+# FIREDANCER: We use a modified version of the solana-file-download crate,
+# the code for which exists in the solana-download-utils crate.
+solana-download-utils = { workspace = true }
 solana-keypair = { workspace = true }
 solana-logger = { workspace = true }
 tar = { workspace = true }
