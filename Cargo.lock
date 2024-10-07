@@ -8272,7 +8272,10 @@ name = "solana-download-utils"
 version = "4.3.0-alpha.3"
 dependencies = [
  "agave-snapshots",
+ "console 0.16.4",
+ "indicatif",
  "log",
+ "reqwest 0.12.28",
  "solana-clock",
  "solana-file-download",
  "solana-genesis-config",
