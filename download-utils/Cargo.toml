@@ -10,7 +10,13 @@ license = { workspace = true }
 edition = { workspace = true }
 
 [dependencies]
+# FIREDANCER: The solana-file-download crate has some code that we
+# modify for the GUI, so we add back that code in here and we need
+# to re-enable these workspace dependencies.
+console = { workspace = true }
+indicatif = { workspace = true }
 log = { workspace = true }
+reqwest = { workspace = true, features = ["blocking", "brotli", "deflate", "gzip", "rustls-tls", "json"] }
 solana-clock = { workspace = true }
 solana-file-download = { workspace = true }
 solana-genesis-config = { workspace = true }

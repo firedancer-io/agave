@@ -41,7 +41,7 @@ use {
 pub struct AdminRpcRequestMetadata {
     pub rpc_addr: Option<SocketAddr>,
     pub start_time: SystemTime,
-    pub start_progress: Arc<RwLock<ValidatorStartProgress>>,
+    pub start_progress: Arc<solana_core::validator::VSPRwLock>,
     pub validator_exit: Arc<RwLock<Exit>>,
     pub authorized_voter_keypairs: Arc<RwLock<Vec<Arc<Keypair>>>>,
     pub tower_storage: Arc<dyn TowerStorage>,
