@@ -7268,7 +7268,7 @@ dependencies = [
  "reqwest 0.12.16",
  "semver 1.0.26",
  "serial_test",
- "solana-file-download",
+ "solana-download-utils",
  "solana-keypair",
  "solana-logger",
  "tar",
@@ -8046,7 +8046,10 @@ dependencies = [
 name = "solana-download-utils"
 version = "2.3.6"
 dependencies = [
+ "console",
+ "indicatif",
  "log",
+ "reqwest 0.12.16",
  "solana-clock",
  "solana-file-download",
  "solana-genesis-config",
