@@ -638,6 +638,7 @@ impl Consumer {
                         transaction_status_sender_enabled
                     ),
                     transaction_account_lock_limit: Some(bank.get_transaction_account_lock_limit()),
+                    tip_accounts: None,
                 }
             ));
         execute_and_commit_timings.load_execute_us = load_execute_us;
