@@ -11,7 +11,9 @@ use {
     clap::{crate_description, crate_name, crate_version, Arg},
     log::*,
     regex::Regex,
-    solana_file_download::download_file,
+    // FIREDANCER: We use a modified version of the solana-file-download crate,
+    // the code for which exists in the solana-download-utils crate.
+    solana_download_utils::download_file,
     std::{
         borrow::Cow,
         env,
