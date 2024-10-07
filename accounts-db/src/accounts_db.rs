@@ -3236,7 +3236,9 @@ impl AccountsDb {
     /// Pre-scans the write cache to capture entries not yet flushed to the accounts index, then
     /// deduplicates against the index scan, calling `scan_func` with the newest version of each
     /// account
-    pub(crate) fn scan_accounts<F>(
+    // FIREDANCER: This is made public for conveninent use by code that sends
+    // account information to the GUI.
+    pub fn scan_accounts<F>(
         &self,
         ancestors: &Ancestors,
         bank_id: BankId,
@@ -3330,7 +3332,93 @@ impl AccountsDb {
         Ok(())
     }
 
-    pub(crate) fn index_scan_accounts<F>(
+    // FIREDANCER: Unlike `scan_accounts`, this does NOT register a
+    // ScanGuard, so it does not stall accounts database reclamation.
+    //
+    // The tradeoff is the scan is not a consistent snapshot of account
+    // state. For the purposes of GUI validator names/icons this is fine.
+    pub fn scan_accounts_unguarded<F>(
+        &self,
+        ancestors: &Ancestors,
+        owner: &Pubkey,
+        mut scan_func: F,
+        config: &ScanConfig,
+    ) where
+        F: FnMut(&Pubkey, AccountSharedData, Slot),
+    {
+        let max_root_inclusive = self.max_root();
+        let max_root_ancestors = Ancestors::from(vec![max_root_inclusive]);
+        let ancestors = if ancestors.contains_key(&max_root_inclusive) {
+            ancestors
+        } else {
+            &max_root_ancestors
+        };
+
+        let cached_pubkeys = self.accounts_cache.cached_pubkeys();
+        let mut cached_versions = ahash::HashMap::with_capacity(cached_pubkeys.len());
+        for pubkey in cached_pubkeys {
+            if config.is_aborted() {
+                break;
+            }
+
+            if let Some((cached_account, slot)) =
+                self.accounts_cache.load_latest(&pubkey, ancestors)
+            {
+                cached_versions.insert(pubkey, (cached_account, slot));
+            }
+        }
+
+        let mut max_root = max_root_inclusive;
+        if let Some(min) = ancestors.min_slot() {
+            max_root = max_root.min(min);
+        }
+        self.accounts_index.scan_accounts(
+            ancestors,
+            max_root,
+            |pubkey, (account_info, slot)| {
+                if let Some((cached_account, cache_slot)) = cached_versions.remove(pubkey)
+                    && cache_slot >= slot
+                {
+                    if cached_account.account.owner() == owner {
+                        scan_func(pubkey, cached_account.account.clone(), cache_slot);
+                    }
+                    return;
+                }
+
+                if let LoadedAccountAccessor::Stored(Some((storage_entry, offset))) =
+                    self.get_account_accessor(slot, &account_info.storage_location())
+                {
+                    let matches = storage_entry
+                        .accounts
+                        .get_stored_account_without_data_callback(offset, |meta| {
+                            meta.owner == owner
+                        })
+                        .unwrap_or(false);
+                    if matches {
+                        if let Some(account) =
+                            storage_entry.accounts.get_account_shared_data(offset)
+                        {
+                            scan_func(pubkey, account, slot);
+                        }
+                    }
+                }
+            },
+            config,
+        );
+
+        for (pubkey, (cached_account, slot)) in cached_versions {
+            if config.is_aborted() {
+                break;
+            }
+            if cached_account.account.owner() == owner {
+                scan_func(&pubkey, cached_account.account.clone(), slot);
+            }
+        }
+    }
+
+    // FIREDANCER: This is made public for conveninent use by code that sends
+    // account information to the GUI.
+    pub fn index_scan_accounts<F>(
         &self,
         ancestors: &Ancestors,
         bank_id: BankId,

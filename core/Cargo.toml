@@ -185,6 +185,9 @@ tokio = { workspace = true, features = ["full"] }
 tokio-util = { workspace = true }
 trees = { workspace = true }
 wincode = { workspace = true }
+solana-commitment-config = { workspace = true }
+solana-config-interface = { workspace = true }
+serde_json = { workspace = true }
 
 [target.'cfg(not(any(target_env = "msvc", target_os = "freebsd")))'.dependencies]
 jemalloc-ctl = { workspace = true }
