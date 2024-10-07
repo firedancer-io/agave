@@ -129,6 +129,7 @@ pub fn download_file<'a, 'b>(
         progress_bar: ProgressBar,
         response: R,
         last_print: Instant,
+        last_report: Instant,
         current_bytes: usize,
         last_print_bytes: usize,
         download_size: f32,
@@ -144,33 +145,37 @@ pub fn download_file<'a, 'b>(
 
             self.current_bytes += n;
             let total_bytes_f32 = self.current_bytes as f32;
-            let diff_bytes_f32 = (self.current_bytes - self.last_print_bytes) as f32;
-            let last_throughput = diff_bytes_f32 / self.last_print.elapsed().as_secs_f32();
-            let estimated_remaining_time = if last_throughput > 0_f32 {
-                (self.download_size - self.current_bytes as f32) / last_throughput
-            } else {
-                f32::MAX
-            };
+            // let diff_bytes_f32 = (self.current_bytes - self.last_print_bytes) as f32;
+            // let last_throughput = diff_bytes_f32 / self.last_print.elapsed().as_secs_f32();
+            // let estimated_remaining_time = if last_throughput > 0_f32 {
+            //     (self.download_size - self.current_bytes as f32) / last_throughput
+            // } else {
+            //     f32::MAX
+            // };
 
             let mut progress_record = DownloadProgressRecord {
                 elapsed_time: self.start_time.elapsed(),
                 last_elapsed_time: self.last_print.elapsed(),
-                last_throughput,
+                last_throughput: self.progress_bar.per_sec() as f32,
                 total_throughput: self.current_bytes as f32
                     / self.start_time.elapsed().as_secs_f32(),
                 total_bytes: self.download_size as usize,
                 current_bytes: self.current_bytes,
                 percentage_done: 100f32 * (total_bytes_f32 / self.download_size),
-                estimated_remaining_time,
+                estimated_remaining_time: self.progress_bar.eta().as_secs_f32(),
                 notification_count: self.notification_count,
             };
             let mut to_update_progress = false;
             if progress_record.last_elapsed_time.as_secs() > 5 {
                 self.last_print = Instant::now();
                 self.last_print_bytes = self.current_bytes;
-                to_update_progress = true;
                 self.notification_count += 1;
                 progress_record.notification_count = self.notification_count
+            }
+
+            if self.last_report.elapsed().as_millis() > 50 {
+                to_update_progress = true;
+                self.last_report = Instant::now();
             }
 
             if self.use_progress_bar {
@@ -202,6 +207,7 @@ pub fn download_file<'a, 'b>(
         progress_bar,
         response,
         last_print: Instant::now(),
+        last_report: Instant::now(),
         current_bytes: 0,
         last_print_bytes: 0,
         download_size: (download_size as f32).max(1f32),
