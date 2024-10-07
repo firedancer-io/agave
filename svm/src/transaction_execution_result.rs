@@ -37,6 +37,8 @@ pub struct TransactionExecutionDetails {
     /// deltas related to total account data size changes for this transaction.
     /// NOTE: set to None IFF `status` is not `Ok`.
     pub accounts_deltas: Option<AccountsDeltas>,
+    /// FIREDANCER: Store tips for the GUI
+    pub tips: u64,
 }
 
 impl TransactionExecutionDetails {
