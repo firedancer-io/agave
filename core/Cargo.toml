@@ -98,6 +98,10 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 trees = { workspace = true }
 
+serde_json = { workspace = true }
+solana-config-program = { workspace = true }
+solana-account-decoder = { workspace = true }
+
 [dev-dependencies]
 assert_matches = { workspace = true }
 fs_extra = { workspace = true }
