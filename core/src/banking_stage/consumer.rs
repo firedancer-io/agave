@@ -622,6 +622,7 @@ impl Consumer {
             executed_transactions_count,
             executed_non_vote_transactions_count,
             executed_with_successful_result_count,
+            executed_non_vote_with_successful_result_count,
             signature_count,
             error_counters,
             ..
@@ -703,6 +704,7 @@ impl Consumer {
                 executed_transactions_count,
                 executed_non_vote_transactions_count,
                 executed_with_successful_result_count,
+                executed_non_vote_with_successful_result_count,
             )
         } else {
             (
