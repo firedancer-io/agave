@@ -312,7 +312,7 @@ pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_vo
 }
 
 #[no_mangle]
-pub extern "C" fn fd_ext_bank_sanitized_txn_load_addresess( bank: *const std::ffi::c_void, address_table_lookups: *const std::ffi::c_void, address_table_lookups_count: u64, out_data: *mut u8 ) -> i32 {
+pub extern "C" fn fd_ext_bank_sanitized_txn_load_addresses( bank: *const std::ffi::c_void, address_table_lookups: *const std::ffi::c_void, address_table_lookups_count: u64, out_data: *mut u8 ) -> i32 {
     /* These constants must be synchronized with the C code in the bank
        tile, and get counted directly in a metrics buffer.  Do not add
        additional error codes without updating the tile code and
