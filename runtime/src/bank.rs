@@ -218,6 +218,32 @@ const _CHECK_ABI: [u8; 248] = [0; std::mem::size_of::<SanitizedTransaction>()];
 
 
 #[no_mangle]
+pub extern "C" fn fd_ext_bank_load_account( bank: *const std::ffi::c_void, with_fixed_root: i32, addr: *const u8, out_owner: *mut u8, out_data: *mut u8, out_data_sz: *mut u64 ) -> i32 {
+    let bank = bank as *const Bank;
+    unsafe { Arc::increment_strong_count(bank) };
+
+    let loader = if with_fixed_root == 0 {
+        Accounts::load_with_fixed_root
+    } else {
+        Accounts::load_without_fixed_root
+    };
+
+    let bank = unsafe { Arc::from_raw( bank as *const Bank ) };
+    loader(&bank.rc.accounts, &bank.ancestors, unsafe { &*(addr as *const Pubkey) })
+        .map(|(account, _)| {
+            unsafe {
+                std::ptr::copy_nonoverlapping(account.owner().as_ref().as_ptr(), out_owner, 32);
+
+                let out_sz = usize::min(account.data().len(), *out_data_sz as usize);
+                std::ptr::copy_nonoverlapping(account.data().as_ptr(), out_data, out_sz);
+                *out_data_sz = out_sz as u64;
+            }
+            0
+        })
+        .unwrap_or(-1)
+}
+
+#[no_mangle]
 pub extern "C" fn fd_ext_bank_verify_precompiles( bank: *const std::ffi::c_void, txn: *const std::ffi::c_void ) -> i32 {
     let txn: &SanitizedTransaction = unsafe {
         &*(txn as *const SanitizedTransaction)
