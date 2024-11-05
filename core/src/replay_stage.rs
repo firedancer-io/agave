@@ -2465,6 +2465,24 @@ impl ReplayStage {
                 fd_ext_plugin_publish_replay_stage(0, memory.as_ptr(), 8);
             }
 
+            // FIREDANCER: Tell resolv tile the bank to use.
+            extern "C" {
+                fn fd_ext_resolv_publish_root_bank(data: *const u8, len: u64);
+                fn fd_ext_resolv_tile_cnt() -> u64;
+            }
+
+            let mut memory: [u8; 16] = [0; 16];
+            memory[8..16].copy_from_slice(&root_bank.slot().to_le_bytes());
+            let ptr = Arc::into_raw(Arc::clone(&root_bank));
+            for _ in 0..unsafe { fd_ext_resolv_tile_cnt() }-1 {
+                unsafe { Arc::increment_strong_count(ptr) };
+            }
+            memory[0..8].copy_from_slice(&(ptr as usize).to_le_bytes());
+
+            unsafe {
+                fd_ext_resolv_publish_root_bank(memory.as_ptr(), 16);
+            }
+
             rpc_subscriptions.notify_roots(rooted_slots);
             if let Some(sender) = bank_notification_sender {
                 sender
@@ -3290,6 +3308,18 @@ impl ReplayStage {
                 }
                 unsafe {
                     fd_ext_plugin_publish_replay_stage(2, memory.as_ptr(), 72);
+                }
+
+                // FIREDANCER: Tell resolv tile the blockhash.
+                let mut memory: [u8; 40] = [0; 40];
+                memory[0..8].copy_from_slice(&bank.slot().to_le_bytes());
+                memory[8..40].copy_from_slice(bank.last_blockhash().as_ref());
+
+                extern "C" {
+                    fn fd_ext_resolv_publish_completed_blockhash(data: *const u8, len: u64);
+                }
+                unsafe {
+                    fd_ext_resolv_publish_completed_blockhash(memory.as_ptr(), 40);
                 }
 
                 if let Some(sender) = bank_notification_sender {
