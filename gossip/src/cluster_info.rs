@@ -72,7 +72,7 @@ use {
         path::{Path, PathBuf},
         result::Result,
         sync::{
-            atomic::{AtomicBool, Ordering},
+            atomic::{AtomicBool, AtomicU8, Ordering},
             Arc, Mutex, RwLock, RwLockReadGuard,
         },
         thread::{sleep, Builder, JoinHandle},
@@ -161,6 +161,7 @@ pub struct ClusterInfo {
     instance: RwLock<NodeInstance>,
     contact_info_path: PathBuf,
     socket_addr_space: SocketAddrSpace,
+    print_fail_count: AtomicU8,
 }
 
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
@@ -459,6 +460,7 @@ impl ClusterInfo {
             contact_info_path: PathBuf::default(),
             contact_save_interval: 0, // disabled
             socket_addr_space,
+            print_fail_count: AtomicU8::new(0),
         };
         me.refresh_my_gossip_contact_info();
         me
@@ -2586,6 +2588,28 @@ impl ClusterInfo {
                 counts[k] += 1;
             }
         }
+        fn print_hex(data: &[u8]){
+            let mut offset = 0;
+            for chunk in data.chunks(16) {
+                // Print the offset
+                print!("{:08x}: ", offset);
+
+                // Print the bytes in hex
+                for i in 0..16 {
+                    if i < chunk.len() {
+                        print!("{:02x} ", chunk[i]);
+                    } else {
+                        print!("   ");
+                    }
+                    if i == 7 {
+                        print!(" "); // Extra space after 8th byte
+                    }
+                }
+                println!("");
+                offset += 16;
+            }
+        }
+
         let packets = receiver.recv_timeout(RECV_TIMEOUT)?;
         let mut counts = [0u64; 7];
         count_packets_received(&packets, &mut counts);
@@ -2602,8 +2626,68 @@ impl ClusterInfo {
                     .add_relaxed(excess_count as u64);
             }
         }
+        
+        let failed_decode_counts = [
+            &self.stats.packets_received_pull_request_failed_decode_count,
+            &self.stats.packets_received_pull_response_failed_decode_count,
+            &self.stats.packets_received_push_message_failed_decode_count,
+            &self.stats.packets_received_prune_message_failed_decode_count,
+            &self.stats.packets_received_ping_message_failed_decode_count,
+            &self.stats.packets_received_pong_message_failed_decode_count,
+        ];
+
+        let failed_push_crds_decode_counts = [
+            &self.stats.packets_received_push_msg_legacy_contact_info_failed_decode_count,
+            &self.stats.packets_received_push_msg_vote_failed_decode_count,
+            &self.stats.packets_received_push_msg_lowest_slot_failed_decode_count,
+            &self.stats.packets_received_push_msg_legacy_snapshot_hashes_failed_decode_count,
+            &self.stats.packets_received_push_msg_accounts_hashes_failed_decode_count,
+            &self.stats.packets_received_push_msg_epoch_slots_failed_decode_count,
+            &self.stats.packets_received_push_msg_legacy_version_failed_decode_count,
+            &self.stats.packets_received_push_msg_version_failed_decode_count,
+            &self.stats.packets_received_push_msg_node_instance_failed_decode_count,
+            &self.stats.packets_received_push_msg_duplicate_shred_failed_decode_count,
+            &self.stats.packets_received_push_msg_snapshot_hashes_failed_decode_count,
+            &self.stats.packets_received_push_msg_contact_info_failed_decode_count,
+            &self.stats.packets_received_push_msg_restart_last_voted_fork_slots_failed_decode_count,
+            &self.stats.packets_received_push_msg_restart_heaviest_fork_failed_decode_count,    
+        ];
         let verify_packet = |packet: Packet| {
-            let protocol: Protocol = packet.deserialize_slice(..).ok()?;
+            // Get protocol type
+            let k = match packet
+                    .data(..4)
+                    .and_then(|data| <[u8; 4]>::try_from(data).ok())
+                    .map(u32::from_le_bytes)
+                {
+                    Some(k @ 0..=6) => k as usize,
+                    None | Some(_) => 6,
+                };
+            // let protocol: Protocol = packet.deserialize_slice(..).ok()?;
+            let protocol: Protocol = match packet.deserialize_slice(..) {
+                Ok(protocol) => protocol,
+                Err(_) => {
+                    failed_decode_counts[k].add_relaxed(1);
+                    if k == 2 
+                        // &&  self.print_fail_count.load(Ordering::Relaxed) < 10 
+                        {
+                        // Uncomment on single thread verification
+                        // println!("PUSH PACKET HEX DUMP:");
+                        // print_hex(packet.data(..)?);
+                        match packet
+                            .data(44..48)
+                            .and_then(|data| <[u8; 4]>::try_from(data).ok())
+                            .map(u32::from_le_bytes)
+                        {
+                            Some(k @ 0..=14) => {
+                                failed_push_crds_decode_counts[k as usize].add_relaxed(1);
+                            },
+                            None | Some(_) => {},
+                        };
+                        self.print_fail_count.fetch_add(1, Ordering::Relaxed);
+                    }
+                    return None;
+                }
+            };
             protocol.sanitize().ok()?;
 
             /* Create the unit test and dump to a file */
@@ -2639,6 +2723,7 @@ impl ClusterInfo {
         let packets: Vec<_> = {
             let _st = ScopedTimer::from(&self.stats.verify_gossip_packets_time);
             thread_pool.install(|| packets.into_par_iter().filter_map(verify_packet).collect())
+            // packets.into_iter().filter_map(verify_packet).collect()
         };
         self.stats
             .packets_received_count
