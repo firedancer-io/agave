@@ -38,30 +38,15 @@ use {
             RestartHeaviestFork, RestartLastVotedForkSlots, RestartLastVotedForkSlotsError,
         },
         weighted_shuffle::WeightedShuffle,
-    },
-    bincode::{serialize, serialized_size},
-    crossbeam_channel::{Receiver, RecvTimeoutError, Sender},
-    itertools::Itertools,
-    rand::{seq::SliceRandom, thread_rng, CryptoRng, Rng},
-    rayon::{prelude::*, ThreadPool, ThreadPoolBuilder},
-    serde::ser::Serialize,
-    solana_feature_set::FeatureSet,
-    solana_ledger::shred::Shred,
-    solana_measure::measure::Measure,
-    solana_net_utils::{
+    }, bincode::{serialize, serialized_size}, chrono::Utc, crossbeam_channel::{Receiver, RecvTimeoutError, Sender}, itertools::Itertools, rand::{seq::SliceRandom, thread_rng, CryptoRng, Rng}, rayon::{prelude::*, ThreadPool, ThreadPoolBuilder}, serde::ser::Serialize, solana_feature_set::FeatureSet, solana_ledger::shred::Shred, solana_measure::measure::Measure, solana_net_utils::{
         bind_common, bind_common_in_range, bind_in_range, bind_in_range_with_config,
         bind_more_with_config, bind_two_in_range_with_offset_and_config,
         find_available_port_in_range, multi_bind_in_range, PortRange, SocketConfig,
         VALIDATOR_PORT_RANGE,
-    },
-    solana_perf::{
+    }, solana_perf::{
         data_budget::DataBudget,
         packet::{Packet, PacketBatch, PacketBatchRecycler, PACKET_DATA_SIZE},
-    },
-    solana_rayon_threadlimit::get_thread_count,
-    solana_runtime::bank_forks::BankForks,
-    solana_sanitize::{Sanitize, SanitizeError},
-    solana_sdk::{
+    }, solana_rayon_threadlimit::get_thread_count, solana_runtime::bank_forks::BankForks, solana_sanitize::{Sanitize, SanitizeError}, solana_sdk::{
         clock::{Slot, DEFAULT_MS_PER_SLOT, DEFAULT_SLOTS_PER_EPOCH},
         hash::Hash,
         pubkey::Pubkey,
@@ -69,21 +54,17 @@ use {
         signature::{Keypair, Signable, Signature, Signer},
         timing::timestamp,
         transaction::Transaction,
-    },
-    solana_streamer::{
+    }, solana_streamer::{
         packet,
         quic::DEFAULT_QUIC_ENDPOINTS,
         socket::SocketAddrSpace,
         streamer::{PacketBatchReceiver, PacketBatchSender},
-    },
-    solana_vote::vote_parser,
-    solana_vote_program::vote_state::MAX_LOCKOUT_HISTORY,
-    std::{
+    }, solana_vote::vote_parser, solana_vote_program::vote_state::MAX_LOCKOUT_HISTORY, std::{
         borrow::{Borrow, Cow},
         collections::{HashMap, HashSet, VecDeque},
         fmt::Debug,
         fs::{self, File},
-        io::BufReader,
+        io::{BufReader, Write},
         iter::repeat,
         net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, UdpSocket},
         num::NonZeroUsize,
@@ -96,8 +77,7 @@ use {
         },
         thread::{sleep, Builder, JoinHandle},
         time::{Duration, Instant},
-    },
-    thiserror::Error,
+    }, thiserror::Error
 };
 
 /// milliseconds we sleep for between gossip requests
@@ -2625,6 +2605,34 @@ impl ClusterInfo {
         let verify_packet = |packet: Packet| {
             let protocol: Protocol = packet.deserialize_slice(..).ok()?;
             protocol.sanitize().ok()?;
+
+            /* Create the unit test and dump to a file */
+            match serde_yaml::to_string(&protocol) {
+                Ok(yaml) => {
+                    let timestamp = Utc::now().timestamp();
+                    
+                    // Create and write the YAML file
+                    let yaml_file_name = format!("gossip_incoming_{}.yaml", timestamp);
+                    let mut yaml_file = File::create(&yaml_file_name).unwrap();
+                    yaml_file.write_all(yaml.as_bytes()).unwrap();
+            
+                    // Create and write the bincode file
+                    let bincode_file_name = format!("gossip_incoming_{}.bin", timestamp);
+                    let mut bincode_file = File::create(&bincode_file_name).unwrap();
+                    match bincode::serialize(&protocol) {
+                        Ok(encoded) => {
+                            bincode_file.write_all(&encoded).unwrap();
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to serialize to bincode: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to serialize to YAML: {}", e);
+                }
+            }
+
             let protocol = protocol.par_verify(&self.stats)?;
             Some((packet.meta().socket_addr(), protocol))
         };

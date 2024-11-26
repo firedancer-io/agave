@@ -156,11 +156,25 @@ impl From<u64> for PubkeyError {
     borsh(crate = "borsh")
 )]
 #[cfg_attr(all(feature = "borsh", feature = "std"), derive(BorshSchema))]
-#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "serde", derive(Deserialize))]
 #[cfg_attr(feature = "bytemuck", derive(Pod, Zeroable))]
 #[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[cfg_attr(feature = "dev-context-only-utils", derive(Arbitrary))]
 pub struct Pubkey(pub(crate) [u8; 32]);
+
+impl serde::Serialize for Pubkey {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if serializer.is_human_readable() {
+            let str_representation = std::format!("{}", self);
+            serializer.serialize_str(&str_representation)
+        } else {
+            serializer.serialize_newtype_struct("Pubkey", &self.0)
+        }
+    }
+}
 
 impl solana_sanitize::Sanitize for Pubkey {}
 

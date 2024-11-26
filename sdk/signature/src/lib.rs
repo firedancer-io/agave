@@ -4,8 +4,9 @@
 #![cfg_attr(feature = "frozen-abi", feature(min_specialization))]
 #[cfg(any(test, feature = "verify"))]
 use core::convert::TryInto;
+use std::format;
 #[cfg(feature = "serde")]
-use serde_derive::{Deserialize, Serialize};
+use serde_derive::Deserialize;
 use {
     core::{
         fmt,
@@ -25,7 +26,7 @@ const MAX_BASE58_SIGNATURE_LEN: usize = 88;
 
 #[repr(transparent)]
 #[cfg_attr(feature = "frozen-abi", derive(solana_frozen_abi_macro::AbiExample))]
-#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "serde", derive(Deserialize))]
 #[derive(Clone, Copy, Default, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Signature(GenericArray<u8, U64>);
 
@@ -35,6 +36,21 @@ impl solana_sanitize::Sanitize for Signature {}
 impl Signature {
     pub fn new_unique() -> Self {
         Self::from(core::array::from_fn(|_| rand::random()))
+    }
+}
+
+use serde::{Serializer, Serialize};
+impl Serialize for Signature {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if serializer.is_human_readable() {
+            let str_representation = format!("{}", self);
+            serializer.serialize_str(&str_representation)
+        } else {
+            serializer.serialize_newtype_struct("Signature", &self.0)
+        }
     }
 }
 
