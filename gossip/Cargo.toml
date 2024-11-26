@@ -14,6 +14,7 @@ assert_matches = { workspace = true }
 bincode = { workspace = true }
 bv = { workspace = true, features = ["serde"] }
 clap = { workspace = true }
+chrono = { workspace = true }
 crossbeam-channel = { workspace = true }
 flate2 = { workspace = true }
 indexmap = { workspace = true, features = ["rayon"] }
@@ -25,6 +26,7 @@ rand = { workspace = true }
 rand_chacha = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }
+serde_yaml = { workspace = true }
 serde_bytes = { workspace = true }
 serde_derive = { workspace = true }
 solana-bloom = { workspace = true }
