@@ -1702,7 +1702,7 @@ mod tests {
             aligned_memory_mapping: false,
             ..Config::default()
         };
-        let memory_mapping = MemoryMapping::new(vec![region], &config, &SBPFVersion::V2).unwrap();
+        let memory_mapping = MemoryMapping::new(vec![region], &config, &SBPFVersion::V3).unwrap();
 
         let ins = SyscallInvokeSignedRust::translate_instruction(
             vm_addr,
@@ -1738,7 +1738,7 @@ mod tests {
             aligned_memory_mapping: false,
             ..Config::default()
         };
-        let memory_mapping = MemoryMapping::new(vec![region], &config, &SBPFVersion::V2).unwrap();
+        let memory_mapping = MemoryMapping::new(vec![region], &config, &SBPFVersion::V3).unwrap();
 
         let signers = SyscallInvokeSignedRust::translate_signers(
             &program_id,
@@ -1774,7 +1774,7 @@ mod tests {
             aligned_memory_mapping: false,
             ..Config::default()
         };
-        let memory_mapping = MemoryMapping::new(vec![region], &config, &SBPFVersion::V2).unwrap();
+        let memory_mapping = MemoryMapping::new(vec![region], &config, &SBPFVersion::V3).unwrap();
 
         let account_info = translate_type::<AccountInfo>(&memory_mapping, vm_addr, false).unwrap();
 
@@ -1824,7 +1824,7 @@ mod tests {
         let memory_mapping = MemoryMapping::new(
             mock_caller_account.regions.split_off(0),
             &config,
-            &SBPFVersion::V2,
+            &SBPFVersion::V3,
         )
         .unwrap();
 
@@ -1882,7 +1882,7 @@ mod tests {
         let memory_mapping = MemoryMapping::new(
             mock_caller_account.regions.split_off(0),
             &config,
-            &SBPFVersion::V2,
+            &SBPFVersion::V3,
         )
         .unwrap();
 
@@ -2010,7 +2010,7 @@ mod tests {
         let memory_mapping = MemoryMapping::new(
             mock_caller_account.regions.split_off(0),
             &config,
-            &SBPFVersion::V2,
+            &SBPFVersion::V3,
         )
         .unwrap();
 
@@ -2185,7 +2185,7 @@ mod tests {
         let memory_mapping = MemoryMapping::new(
             mock_caller_account.regions.split_off(0),
             &config,
-            &SBPFVersion::V2,
+            &SBPFVersion::V3,
         )
         .unwrap();
 
@@ -2255,7 +2255,7 @@ mod tests {
         let memory_mapping = MemoryMapping::new(
             mock_caller_account.regions.split_off(0),
             &config,
-            &SBPFVersion::V2,
+            &SBPFVersion::V3,
         )
         .unwrap();
 
@@ -2311,7 +2311,7 @@ mod tests {
         let memory_mapping = MemoryMapping::new(
             mock_caller_account.regions.split_off(0),
             &config,
-            &SBPFVersion::V2,
+            &SBPFVersion::V3,
         )
         .unwrap();
 
@@ -2384,7 +2384,7 @@ mod tests {
         let memory_mapping = MemoryMapping::new(
             mock_caller_account.regions.split_off(0),
             &config,
-            &SBPFVersion::V2,
+            &SBPFVersion::V3,
         )
         .unwrap();
 
@@ -2472,7 +2472,7 @@ mod tests {
         let memory_mapping = MemoryMapping::new(
             mock_caller_account.regions.split_off(0),
             &config,
-            &SBPFVersion::V2,
+            &SBPFVersion::V3,
         )
         .unwrap();
 
@@ -2550,7 +2550,7 @@ mod tests {
             aligned_memory_mapping: false,
             ..Config::default()
         };
-        let memory_mapping = MemoryMapping::new(vec![region], &config, &SBPFVersion::V2).unwrap();
+        let memory_mapping = MemoryMapping::new(vec![region], &config, &SBPFVersion::V3).unwrap();
 
         mock_invoke_context!(
             invoke_context,
