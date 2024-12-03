@@ -9048,7 +9048,7 @@ dependencies = [
 [[package]]
 name = "solana_rbpf"
 version = "0.8.2"
-source = "git+https://github.com/solana-labs/rbpf?rev=cd19a25c17ec474e6fa01a3cc3efa325f44cd111#cd19a25c17ec474e6fa01a3cc3efa325f44cd111"
+source = "git+https://github.com/solana-labs/rbpf?rev=4ad935be45e5663be23b30cfc750b1ae1ad03c44#4ad935be45e5663be23b30cfc750b1ae1ad03c44"
 dependencies = [
  "byteorder",
  "combine 3.8.1",
