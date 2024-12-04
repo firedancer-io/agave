@@ -30,12 +30,7 @@ impl ServerCertVerifier for SkipServerVerification {
         cert: &CertificateDer<'_>,
         dss: &DigitallySignedStruct,
     ) -> Result<HandshakeSignatureValid, Error> {
-        verify_tls12_signature(
-            message,
-            cert,
-            dss,
-            &self.0.signature_verification_algorithms,
-        )
+        Err(rustls::Error::DecryptError)
     }
 
     fn verify_tls13_signature(

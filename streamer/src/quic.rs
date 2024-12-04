@@ -7,7 +7,6 @@ use {
         streamer::StakedNodes,
     },
     crossbeam_channel::Sender,
-    pem::Pem,
     quinn::{
         crypto::rustls::{NoInitialCipherSuite, QuicServerConfig},
         Endpoint, IdleTimeout, ServerConfig,
@@ -19,7 +18,7 @@ use {
     solana_quic_definitions::{
         NotifyKeyUpdate, QUIC_MAX_TIMEOUT, QUIC_MAX_UNSTAKED_CONCURRENT_STREAMS,
     },
-    solana_tls_utils::{new_dummy_x509_certificate, SkipClientVerification},
+    solana_tls_utils::{ResolvePublicKey, SkipClientVerification},
     std::{
         net::UdpSocket,
         sync::{
@@ -50,17 +49,10 @@ pub struct SpawnServerResult {
 #[allow(clippy::field_reassign_with_default)] // https://github.com/rust-lang/rust-clippy/issues/6527
 pub(crate) fn configure_server(
     identity_keypair: &Keypair,
-) -> Result<(ServerConfig, String), QuicServerError> {
-    let (cert, priv_key) = new_dummy_x509_certificate(identity_keypair);
-    let cert_chain_pem_parts = vec![Pem {
-        tag: "CERTIFICATE".to_string(),
-        contents: cert.as_ref().to_vec(),
-    }];
-    let cert_chain_pem = pem::encode_many(&cert_chain_pem_parts);
-
+) -> Result<ServerConfig, QuicServerError> {
     let mut server_tls_config = rustls::ServerConfig::builder()
         .with_client_cert_verifier(SkipClientVerification::new())
-        .with_single_cert(vec![cert], priv_key)?;
+        .with_cert_resolver(Arc::new(ResolvePublicKey::from_keypair(identity_keypair)));
     server_tls_config.alpn_protocols = vec![ALPN_TPU_PROTOCOL_ID.to_vec()];
     server_tls_config.key_log = Arc::new(KeyLogFile::new());
     let quic_server_config = QuicServerConfig::try_from(server_tls_config)?;
@@ -88,7 +80,7 @@ pub(crate) fn configure_server(
     // See https://github.com/anza-xyz/agave/pull/1647.
     config.enable_segmentation_offload(false);
 
-    Ok((server_config, cert_chain_pem))
+    Ok(server_config)
 }
 
 pub fn rt(name: String) -> Runtime {
@@ -115,7 +107,7 @@ pub struct EndpointKeyUpdater {
 
 impl NotifyKeyUpdate for EndpointKeyUpdater {
     fn update_key(&self, key: &Keypair) -> Result<(), Box<dyn std::error::Error>> {
-        let (config, _) = configure_server(key)?;
+        let config = configure_server(key)?;
         for endpoint in &self.endpoints {
             endpoint.set_server_config(Some(config.clone()));
         }

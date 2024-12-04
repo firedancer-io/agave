@@ -187,7 +187,7 @@ pub fn spawn_server_multi(
     } = quic_server_params;
     let concurrent_connections = max_staked_connections + max_unstaked_connections;
     let max_concurrent_connections = concurrent_connections + concurrent_connections / 4;
-    let (config, _) = configure_server(keypair)?;
+    let config = configure_server(keypair)?;
 
     let endpoints = sockets
         .into_iter()

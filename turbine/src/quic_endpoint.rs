@@ -9,15 +9,10 @@ use {
         EndpointConfig, IdleTimeout, SendDatagramError, ServerConfig, TokioRuntime,
         TransportConfig, VarInt,
     },
-    rustls::{
-        pki_types::{CertificateDer, PrivateKeyDer},
-        CertificateError, KeyLogFile,
-    },
+    rustls::{CertificateError, KeyLogFile},
     solana_runtime::bank_forks::BankForks,
     solana_sdk::{pubkey::Pubkey, signature::Keypair},
-    solana_tls_utils::{
-        new_dummy_x509_certificate, SkipClientVerification, SkipServerVerification,
-    },
+    solana_tls_utils::{ResolvePublicKey, SkipClientVerification, SkipServerVerification},
     std::{
         cmp::Reverse,
         collections::{hash_map::Entry, HashMap},
@@ -106,9 +101,8 @@ pub fn new_quic_endpoint(
     ),
     Error,
 > {
-    let (cert, key) = new_dummy_x509_certificate(keypair);
-    let server_config = new_server_config(cert.clone(), key.clone_key())?;
-    let client_config = new_client_config(cert, key)?;
+    let server_config = new_server_config(keypair)?;
+    let client_config = new_client_config(keypair)?;
     let mut endpoint = {
         // Endpoint::new requires entering the runtime context,
         // otherwise the code below will panic.
@@ -153,13 +147,10 @@ pub fn close_quic_endpoint(endpoint: &Endpoint) {
     );
 }
 
-fn new_server_config(
-    cert: CertificateDer<'static>,
-    key: PrivateKeyDer<'static>,
-) -> Result<ServerConfig, rustls::Error> {
+fn new_server_config(keypair: &Keypair) -> Result<ServerConfig, rustls::Error> {
     let mut config = rustls::ServerConfig::builder()
         .with_client_cert_verifier(SkipClientVerification::new())
-        .with_single_cert(vec![cert], key)?;
+        .with_cert_resolver(Arc::new(ResolvePublicKey::from_keypair(keypair)));
     config.alpn_protocols = vec![ALPN_TURBINE_PROTOCOL_ID.to_vec()];
     config.key_log = Arc::new(KeyLogFile::new());
     let quic_server_config = QuicServerConfig::try_from(config)
@@ -172,14 +163,11 @@ fn new_server_config(
     Ok(config)
 }
 
-fn new_client_config(
-    cert: CertificateDer<'static>,
-    key: PrivateKeyDer<'static>,
-) -> Result<ClientConfig, rustls::Error> {
+fn new_client_config(keypair: &Keypair) -> Result<ClientConfig, rustls::Error> {
     let mut config = rustls::ClientConfig::builder()
         .dangerous()
         .with_custom_certificate_verifier(SkipServerVerification::new())
-        .with_client_auth_cert(vec![cert], key)?;
+        .with_client_cert_resolver(Arc::new(ResolvePublicKey::from_keypair(keypair)));
     config.enable_early_data = true;
     config.alpn_protocols = vec![ALPN_TURBINE_PROTOCOL_ID.to_vec()];
     let mut config = ClientConfig::new(Arc::new(QuicClientConfig::try_from(config).unwrap()));

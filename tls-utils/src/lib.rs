@@ -1,6 +1,9 @@
 //! Collection of TLS related code fragments that end up popping up everywhere where quic is used.
 //! Aggregated here to avoid bugs due to conflicting implementations of the same functionality.
 
+mod cert_resolver;
+pub use cert_resolver::*;
+
 mod tls_certificates;
 pub use tls_certificates::*;
 

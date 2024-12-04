@@ -5,15 +5,7 @@ use {
     x509_parser::{prelude::*, public_key::PublicKey},
 };
 
-pub fn new_dummy_x509_certificate(
-    keypair: &Keypair,
-) -> (
-    rustls::pki_types::CertificateDer<'static>,
-    rustls::pki_types::PrivateKeyDer<'static>,
-) {
-    // Unfortunately, rustls does not accept a "raw" Ed25519 key.
-    // We have to convert it to DER and pass it to the library.
-
+fn pkcs8_wrap_key(secret: &[u8; 32]) -> Vec<u8> {
     // Convert private key into PKCS#8 v1 object.
     // RFC 8410, Section 7: Private Key Format
     // https://www.rfc-editor.org/rfc/rfc8410#section-7
@@ -30,21 +22,30 @@ pub fn new_dummy_x509_certificate(
         0x20,
     ];
 
-    let key_pkcs8_der = {
-        let keypair_secret_bytes = keypair.secret().as_bytes();
-        let keypair_secret_len = keypair_secret_bytes.len();
-        if keypair_secret_len != 32 {
-            panic!("Unexpected secret key length!");
-        }
-        let buffer_size = PKCS8_PREFIX
-            .len()
-            .checked_add(keypair_secret_len) //clippy being overly guarded here but optimizer will elide checked_add
-            .expect("Unexpected secret key length!");
-        let mut key_pkcs8_der = Vec::<u8>::with_capacity(buffer_size);
-        key_pkcs8_der.extend_from_slice(&PKCS8_PREFIX);
-        key_pkcs8_der.extend_from_slice(keypair_secret_bytes);
-        key_pkcs8_der
-    };
+    let keypair_secret_len = secret.len();
+    if keypair_secret_len != 32 {
+        panic!("Unexpected secret key length!");
+    }
+    let buffer_size = PKCS8_PREFIX
+        .len()
+        .checked_add(keypair_secret_len) //clippy being overly guarded here but optimizer will elide checked_add
+        .expect("Unexpected secret key length!");
+    let mut key_pkcs8_der = Vec::<u8>::with_capacity(buffer_size);
+    key_pkcs8_der.extend_from_slice(&PKCS8_PREFIX);
+    key_pkcs8_der.extend_from_slice(secret);
+    key_pkcs8_der
+}
+
+pub fn new_dummy_x509_certificate(
+    keypair: &Keypair,
+) -> (
+    rustls::pki_types::CertificateDer<'static>,
+    rustls::pki_types::PrivateKeyDer<'static>,
+) {
+    // Legacy certificate type for peers without "raw public key" support.
+    // We have to convert it to DER and pass it to the library.
+
+    let key_pkcs8_der = pkcs8_wrap_key(keypair.secret().as_bytes());
 
     // Create a dummy certificate. Only the SubjectPublicKeyInfo field
     // is relevant to the peer-to-peer protocols. The signature of the
@@ -114,6 +115,19 @@ pub fn new_dummy_x509_certificate(
         rustls::pki_types::CertificateDer::from(cert_der),
         rustls::pki_types::PrivateKeyDer::try_from(key_pkcs8_der).unwrap(),
     )
+}
+
+pub fn new_raw_public_key(keypair: &Keypair) -> rustls::pki_types::CertificateDer<'static> {
+    let mut rpk_der = Vec::<u8>::with_capacity(12);
+    rpk_der.extend_from_slice(&[
+        /* SEQUENCE (2) */
+        0x30, 0x2A, /* SEQUENCE (1) */
+        0x30, 0x05, /* OBJECT IDENTIFIER  1.3.101.112 */
+        0x06, 0x03, 0x2B, 0x65, 0x70, /* BIT STRING */
+        0x03, 0x21, 0x00,
+    ]);
+    rpk_der.extend_from_slice(&keypair.pubkey().to_bytes());
+    rustls::pki_types::CertificateDer::from(rpk_der)
 }
 
 pub fn get_pubkey_from_tls_certificate(
