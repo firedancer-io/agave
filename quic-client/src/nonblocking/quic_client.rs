@@ -7,9 +7,9 @@ use {
     futures::future::TryFutureExt,
     log::*,
     quinn::{
-        crypto::rustls::QuicClientConfig, ClientConfig, ClosedStream, ConnectError, Connection,
-        ConnectionError, Endpoint, EndpointConfig, IdleTimeout, TokioRuntime, TransportConfig,
-        WriteError,
+        congestion::{Controller, ControllerFactory}, crypto::rustls::QuicClientConfig, ClientConfig, ClosedStream,
+        ConnectError, Connection, ConnectionError, Endpoint, EndpointConfig, IdleTimeout,
+        TokioRuntime, TransportConfig, WriteError,
     },
     solana_connection_cache::{
         client_connection::ClientStats, connection_cache_stats::ConnectionCacheStats,
@@ -35,6 +35,42 @@ use {
     thiserror::Error,
     tokio::{sync::OnceCell, time::timeout},
 };
+
+struct NopCongestion;
+
+impl Controller for NopCongestion {
+    fn on_congestion_event(
+        &mut self,
+        _: std::time::Instant,
+        _: std::time::Instant,
+        _: bool,
+        _: u64,
+    ) {}
+
+    fn on_mtu_update(&mut self, _: u16) {}
+
+    fn window(&self) -> u64 {
+        return 1000000
+    }
+
+    fn clone_box(&self) -> Box<(dyn Controller + 'static)> {
+        Box::new(Self)
+    }
+
+    fn initial_window(&self) -> u64 {
+        return 1000000
+    }
+
+    fn into_any(self: Box<Self>) -> Box<(dyn std::any::Any + 'static)> {
+        Box::new(self)
+    }
+}
+
+impl ControllerFactory for NopCongestion {
+    fn build(self: Arc<Self>, _: std::time::Instant, _: u16) -> Box<(dyn Controller + 'static)> {
+        Box::new(Self)
+    }
+}
 
 /// A lazy-initialized Quic Endpoint
 pub struct QuicLazyInitializedEndpoint {
@@ -105,6 +141,7 @@ impl QuicLazyInitializedEndpoint {
         let timeout = IdleTimeout::try_from(QUIC_MAX_TIMEOUT).unwrap();
         transport_config.max_idle_timeout(Some(timeout));
         transport_config.keep_alive_interval(Some(QUIC_KEEP_ALIVE));
+        transport_config.congestion_controller_factory(Arc::new(NopCongestion));
         config.transport_config(Arc::new(transport_config));
 
         endpoint.set_default_client_config(config);
