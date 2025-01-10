@@ -51,6 +51,7 @@ slab = { workspace = true }
 solana-accounts-db = { workspace = true }
 solana-bloom = { workspace = true }
 solana-builtins-default-costs = { workspace = true }
+solana-bundle = { workspace = true }
 solana-client = { workspace = true }
 solana-compute-budget = { workspace = true }
 solana-compute-budget-instruction = { workspace = true }

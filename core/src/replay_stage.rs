@@ -3414,7 +3414,15 @@ impl ReplayStage {
                 let failed_txn_count =  bank.transaction_error_count();
                 let nonvote_failed_txn_count =  bank.non_vote_transaction_error_count();
                 let compute_units = bank.read_cost_tracker().unwrap().block_cost();
-                let tips = bank.tips.load(Ordering::Relaxed);
+                let mut tips = bank.tips.load(Ordering::Relaxed);
+                
+                // jito collects a 6% fee at the end of the block
+                tips = tips - tips
+                    .checked_mul(6)
+                    .unwrap()
+                    .checked_div(100)
+                    .unwrap();
+
                 let (transaction_fee, priority_fee) = bank.calculate_transaction_and_priority_fee_details(&bank.collector_fee_details.read().unwrap());
 
                 memory[0..8].copy_from_slice(&bank.slot().to_le_bytes());
