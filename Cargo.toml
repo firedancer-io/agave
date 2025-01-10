@@ -16,6 +16,7 @@ members = [
     "bucket_map",
     "builtins",
     "builtins-default-costs",
+    "bundle",
     "clap-utils",
     "clap-v3-utils",
     "cli",
@@ -413,6 +414,7 @@ solana-clap-v3-utils = { path = "clap-v3-utils", version = "=4.0.0-alpha.0", fea
 solana-cli = { path = "cli", version = "=4.0.0-alpha.0", default-features = false }
 solana-cli-config = { path = "cli-config", version = "=4.0.0-alpha.0" }
 solana-cli-output = { path = "cli-output", version = "=4.0.0-alpha.0", features = ["agave-unstable-api"] }
+solana-bundle = { path = "bundle", version = "=4.0.0-alpha.0" }
 solana-client = { path = "client", version = "=4.0.0-alpha.0" }
 solana-client-traits = "3.0.0"
 solana-clock = "3.0.1"
