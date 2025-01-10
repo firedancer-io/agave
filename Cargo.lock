@@ -6674,6 +6674,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "solana-bundle"
+version = "2.2.1"
+dependencies = [
+ "assert_matches",
+ "itertools 0.12.1",
+ "log",
+ "serde",
+ "sha2 0.10.8",
+ "solana-accounts-db",
+ "solana-ledger",
+ "solana-logger",
+ "solana-measure",
+ "solana-poh",
+ "solana-runtime",
+ "solana-runtime-transaction",
+ "solana-sdk",
+ "solana-svm",
+ "solana-timings",
+ "solana-transaction-status",
+ "thiserror 2.0.11",
+]
+
+[[package]]
 name = "solana-cargo-build-sbf"
 version = "2.2.4"
 dependencies = [
@@ -7221,14 +7244,17 @@ dependencies = [
  "serde_json",
  "serial_test",
  "slab",
+ "solana-account-decoder",
  "solana-accounts-db",
  "solana-address-lookup-table-program",
  "solana-bloom",
  "solana-builtins-default-costs",
+ "solana-bundle",
  "solana-client",
  "solana-compute-budget",
  "solana-compute-budget-instruction",
  "solana-compute-budget-program",
+ "solana-config-program",
  "solana-connection-cache",
  "solana-core",
  "solana-cost-model",

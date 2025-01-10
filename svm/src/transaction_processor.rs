@@ -1109,14 +1109,7 @@ impl<FG: ForkGraph> TransactionBatchProcessor<FG> {
             None
         };
 
-        /* This logic is done this way, rather than tips * 95 / 100 to match the order of
-           operations and arithmetic precendence in the tip payment program itself. */
         let tips = tip_accounts_after_tx.saturating_sub(tip_accounts_before_tx);
-        let tips = tips - tips
-            .checked_mul(5)
-            .unwrap()
-            .checked_div(100)
-            .unwrap();
 
         ExecutedTransaction {
             execution_details: TransactionExecutionDetails {
