@@ -405,6 +405,9 @@ impl<FG: ForkGraph> TransactionBatchProcessor<FG> {
         // in the same batch may modify the same accounts. Transaction order is
         // preserved within entries written to the ledger.
         for (tx, check_result) in sanitized_txs.iter().zip(check_results) {
+            // FIREDANCER
+            let start_ticks = unsafe { std::arch::x86_64::_rdtsc() };
+
             let (validate_result, single_validate_fees_us) =
                 measure_us!(check_result.and_then(|tx_details| {
                     Self::validate_transaction_nonce_and_fee_payer(
@@ -432,6 +435,9 @@ impl<FG: ForkGraph> TransactionBatchProcessor<FG> {
                     .unwrap_or(&RentCollector::default()),
             ));
             load_us = load_us.saturating_add(single_load_us);
+
+            // FIRDANCER
+            let load_end_ticks = unsafe { std::arch::x86_64::_rdtsc() };
 
             let (processing_result, single_execution_us) = measure_us!(match load_result {
                 TransactionLoadResult::NotLoaded(err) => Err(err),
@@ -470,6 +476,12 @@ impl<FG: ForkGraph> TransactionBatchProcessor<FG> {
                 }
             });
             execution_us = execution_us.saturating_add(single_execution_us);
+
+            // FIREDANCER
+            let end_ticks = unsafe { std::arch::x86_64::_rdtsc() };
+            execute_timings.details.ts_tx_start = start_ticks;
+            execute_timings.details.ts_tx_end = end_ticks;
+            execute_timings.details.ts_tx_load_end = load_end_ticks;
 
             processing_results.push(processing_result);
         }
@@ -1109,14 +1121,7 @@ impl<FG: ForkGraph> TransactionBatchProcessor<FG> {
             None
         };
 
-        /* This logic is done this way, rather than tips * 95 / 100 to match the order of
-           operations and arithmetic precendence in the tip payment program itself. */
         let tips = tip_accounts_after_tx.saturating_sub(tip_accounts_before_tx);
-        let tips = tips - tips
-            .checked_mul(5)
-            .unwrap()
-            .checked_div(100)
-            .unwrap();
 
         ExecutedTransaction {
             execution_details: TransactionExecutionDetails {
