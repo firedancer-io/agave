@@ -7723,6 +7723,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "solana-bundle"
+version = "3.1.13"
+dependencies = [
+ "assert_matches",
+ "itertools 0.12.1",
+ "log",
+ "serde",
+ "sha2 0.10.9",
+ "solana-account",
+ "solana-accounts-db",
+ "solana-ledger",
+ "solana-measure",
+ "solana-poh",
+ "solana-pubkey",
+ "solana-runtime",
+ "solana-runtime-transaction",
+ "solana-sdk-ids",
+ "solana-signature",
+ "solana-svm",
+ "solana-svm-timings",
+ "solana-transaction",
+ "solana-transaction-error",
+ "solana-transaction-status",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "solana-cargo-build-sbf"
 version = "3.1.13"
 dependencies = [
@@ -8288,6 +8315,7 @@ dependencies = [
  "solana-bloom",
  "solana-bpf-loader-program",
  "solana-builtins-default-costs",
+ "solana-bundle",
  "solana-client",
  "solana-clock",
  "solana-cluster-type",
