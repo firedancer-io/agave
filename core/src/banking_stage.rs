@@ -67,7 +67,7 @@ mod vote_worker;
 conditional_vis_mod!(decision_maker, feature = "dev-context-only-utils", pub);
 mod immutable_deserialized_packet;
 mod latest_validator_vote_packet;
-mod leader_slot_timing_metrics;
+pub mod leader_slot_timing_metrics;
 conditional_vis_mod!(packet_deserializer, feature = "dev-context-only-utils", pub);
 mod packet_receiver;
 mod read_write_account_set;
@@ -376,6 +376,11 @@ impl BankingStage {
         prioritization_fee_cache: Arc<PrioritizationFeeCache>,
     ) -> Self {
         let committer = Committer::new(
+            transaction_status_sender.clone(),
+            replay_vote_sender.clone(),
+            prioritization_fee_cache.clone(),
+        );
+        let bundle_committer = crate::bundle_stage::committer::Committer::new(
             transaction_status_sender,
             replay_vote_sender,
             prioritization_fee_cache,
@@ -410,6 +415,7 @@ impl BankingStage {
             num_workers,
             non_vote_context.clone(),
             committer,
+            bundle_committer,
         );
 
         Self {
@@ -425,12 +431,18 @@ impl BankingStage {
         num_workers: NonZeroUsize,
         context: BankingStageNonVoteContext,
         committer: Committer,
+        bundle_committer: crate::bundle_stage::committer::Committer,
     ) -> Vec<JoinHandle<()>> {
         // FIREDANCER: The Firedancer PoH tile needs access to a Committer object
         // to reuse the code in there for committing transactions. We just store
         // one in a global here on boot.
         committer::FIREDANCER_COMMITTER.store(
           Box::into_raw(Box::new(committer.clone())) as *const Committer as u64,
+          Ordering::Release,
+        );
+        committer::FIREDANCER_BUNDLE_COMMITTER.store(
+          Box::into_raw(Box::new(bundle_committer)) as *const crate::bundle_stage::committer::Committer
+              as u64,
           Ordering::Release,
         );
         match transaction_struct {
