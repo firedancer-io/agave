@@ -11,7 +11,7 @@ use {
     },
 };
 
-#[derive(Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct ProgramTiming {
     pub accumulated_us: Saturating<u64>,
     pub accumulated_units: Saturating<u64>,
@@ -61,6 +61,7 @@ pub enum ExecuteTimingType {
     FilterExecutableUs,
 }
 
+#[derive(Clone)]
 pub struct Metrics([Saturating<u64>; ExecuteTimingType::CARDINALITY]);
 
 impl Index<ExecuteTimingType> for Metrics {
@@ -309,7 +310,7 @@ eager_macro_rules! { $eager_1
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct ExecuteTimings {
     pub metrics: Metrics,
     pub details: ExecuteDetailsTimings,
@@ -335,7 +336,7 @@ impl ExecuteTimings {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Clone, Default, Debug)]
 pub struct ExecuteProcessInstructionTimings {
     pub total_us: Saturating<u64>,
     pub verify_caller_us: Saturating<u64>,
@@ -352,7 +353,7 @@ impl ExecuteProcessInstructionTimings {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Clone, Default, Debug)]
 pub struct ExecuteAccessoryTimings {
     pub feature_set_clone_us: Saturating<u64>,
     pub get_executors_us: Saturating<u64>,
@@ -370,7 +371,7 @@ impl ExecuteAccessoryTimings {
     }
 }
 
-#[derive(Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Default, Debug, PartialEq, Eq)]
 pub struct ExecuteDetailsTimings {
     pub serialize_us: Saturating<u64>,
     pub create_vm_us: Saturating<u64>,
@@ -384,6 +385,11 @@ pub struct ExecuteDetailsTimings {
     pub create_executor_verify_code_us: Saturating<u64>,
     pub create_executor_jit_compile_us: Saturating<u64>,
     pub per_program_timings: HashMap<Pubkey, ProgramTiming>,
+
+    // FIREDANCER: a convenient place to track rdtsc timestamps
+    pub ts_tx_start: u64,
+    pub ts_tx_load_end: u64,
+    pub ts_tx_end: u64,
 }
 
 impl ExecuteDetailsTimings {
@@ -403,6 +409,12 @@ impl ExecuteDetailsTimings {
             let program_timing = self.per_program_timings.entry(*id).or_default();
             program_timing.accumulate_program_timings(other);
         }
+
+        // FIREDANCER
+        self.ts_tx_start = if self.ts_tx_start == 0 { other.ts_tx_start } else { self.ts_tx_start };
+        self.ts_tx_load_end = if self.ts_tx_load_end == 0 { other.ts_tx_load_end } else { self.ts_tx_load_end };
+        self.ts_tx_end = if self.ts_tx_end == 0 { other.ts_tx_end } else { self.ts_tx_end };
+
     }
 
     pub fn accumulate_program(
