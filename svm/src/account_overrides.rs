@@ -12,8 +12,10 @@ pub struct AccountOverrides {
 }
 
 impl AccountOverrides {
+    //  FIREDANCER: This is made public for convenient use by code that provides an
+    //  an interface for executing bundles.
     /// Insert or remove an account with a given pubkey to/from the list of overrides.
-    fn set_account(&mut self, pubkey: &Pubkey, account: Option<AccountSharedData>) {
+    pub fn set_account(&mut self, pubkey: &Pubkey, account: Option<AccountSharedData>) {
         match account {
             Some(account) => self.accounts.insert(*pubkey, account),
             None => self.accounts.remove(pubkey),
@@ -27,8 +29,10 @@ impl AccountOverrides {
         self.set_account(&sysvar::slot_history::id(), slot_history);
     }
 
+    //  FIREDANCER: This is made public for convenient use by code that provides an
+    //  an interface for executing bundles.
     /// Gets the account if it's found in the list of overrides
-    pub(crate) fn get(&self, pubkey: &Pubkey) -> Option<&AccountSharedData> {
+    pub fn get(&self, pubkey: &Pubkey) -> Option<&AccountSharedData> {
         self.accounts.get(pubkey)
     }
 }
