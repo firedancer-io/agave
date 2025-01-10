@@ -67,7 +67,7 @@ mod decision_maker;
 mod forward_packet_batches_by_accounts;
 mod immutable_deserialized_packet;
 mod latest_unprocessed_votes;
-mod leader_slot_timing_metrics;
+pub mod leader_slot_timing_metrics;
 mod multi_iterator_scanner;
 mod packet_deserializer;
 mod packet_filter;
@@ -458,6 +458,14 @@ impl BankingStage {
             ))) as *const Committer as u64,
             Ordering::Release,
         );
+        committer::FIREDANCER_BUNDLE_COMMITTER.store(
+            Box::into_raw(Box::new(crate::bundle_stage::committer::Committer::new(
+                transaction_status_sender.clone(),
+                replay_vote_sender.clone(),
+                prioritization_fee_cache.clone(),
+            ))) as *const Committer as u64,
+            Ordering::Release,
+        );
         // Single thread to generate entries from many banks.
         // This thread talks to poh_service and broadcasts the entries once they have been recorded.
         // Once an entry has been recorded, its blockhash is registered with the bank.
@@ -550,6 +558,14 @@ impl BankingStage {
         // one in a global here on boot.
         committer::FIREDANCER_COMMITTER.store(
             Box::into_raw(Box::new(Committer::new(
+                transaction_status_sender.clone(),
+                replay_vote_sender.clone(),
+                prioritization_fee_cache.clone(),
+            ))) as *const Committer as u64,
+            Ordering::Release,
+        );
+        committer::FIREDANCER_BUNDLE_COMMITTER.store(
+            Box::into_raw(Box::new(crate::bundle_stage::committer::Committer::new(
                 transaction_status_sender.clone(),
                 replay_vote_sender.clone(),
                 prioritization_fee_cache.clone(),
