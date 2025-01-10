@@ -3766,6 +3766,29 @@ impl Bank {
         balances
     }
 
+    pub fn collect_balances_with_cache(
+        &self,
+        batch: &TransactionBatch<impl SVMMessage>,
+        account_overrides: Option<&AccountOverrides>,
+    ) -> TransactionBalances {
+        let mut balances: TransactionBalances = vec![];
+        for transaction in batch.sanitized_transactions() {
+            let mut transaction_balances: Vec<u64> = vec![];
+            for account_key in transaction.account_keys().iter() {
+                let balance = match account_overrides {
+                    None => self.get_balance(account_key),
+                    Some(overrides) => match overrides.get(account_key) {
+                        None => self.get_balance(account_key),
+                        Some(account_data) => account_data.lamports(),
+                    },
+                };
+                transaction_balances.push(balance);
+            }
+            balances.push(transaction_balances);
+        }
+        balances
+    }
+
     pub fn load_and_execute_transactions(
         &self,
         batch: &TransactionBatch<SanitizedTransaction>,
