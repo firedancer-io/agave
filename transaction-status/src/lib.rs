@@ -852,6 +852,13 @@ pub struct TransactionByAddrInfo {
     pub block_time: Option<UnixTimestamp>,
 }
 
+#[derive(Clone, Default)]
+pub struct PreBalanceInfo {
+    pub native: Vec<Vec<u64>>,
+    pub token: Vec<Vec<TransactionTokenBalance>>,
+    pub mint_decimals: std::collections::HashMap<Pubkey, u8>,
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
