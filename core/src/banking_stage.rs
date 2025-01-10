@@ -68,7 +68,7 @@ mod vote_worker;
 conditional_vis_mod!(decision_maker, feature = "dev-context-only-utils", pub);
 mod immutable_deserialized_packet;
 mod latest_validator_vote_packet;
-mod leader_slot_timing_metrics;
+pub mod leader_slot_timing_metrics;
 conditional_vis_mod!(packet_deserializer, feature = "dev-context-only-utils", pub);
 mod packet_filter;
 mod packet_receiver;
@@ -468,7 +468,16 @@ impl BankingStage {
               prioritization_fee_cache.clone(),
           ))) as *const Committer as u64,
           Ordering::Release,
-      );
+        );
+        committer::FIREDANCER_BUNDLE_COMMITTER.store(
+          Box::into_raw(Box::new(crate::bundle_stage::committer::Committer::new(
+              transaction_status_sender.clone(),
+              replay_vote_sender.clone(),
+              prioritization_fee_cache.clone(),
+          ))) as *const Committer as u64,
+          Ordering::Release,
+        );
+
         let vote_storage = {
             let bank = bank_forks.read().unwrap().working_bank();
             VoteStorage::new(&bank)
