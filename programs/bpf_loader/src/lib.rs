@@ -4,6 +4,8 @@
 pub mod serialization;
 pub mod syscalls;
 
+use solana_rbpf::{static_analysis::Analysis};
+
 use {
     solana_compute_budget::compute_budget::MAX_INSTRUCTION_STACK_DEPTH,
     solana_feature_set::{
@@ -1408,6 +1410,22 @@ pub fn execute<'a, 'b: 'a>(
             debug_assert!(memory_pool.stack_len() <= MAX_INSTRUCTION_STACK_DEPTH);
             debug_assert!(memory_pool.heap_len() <= MAX_INSTRUCTION_STACK_DEPTH);
         });
+
+        if true {
+          let mut trace_buffer = Vec::new();
+          let analysis = Analysis::from_executable(executable).unwrap();
+          let log = vm.context_object_pointer.syscall_context
+                          .last()
+                          .unwrap()
+                          .as_ref()
+                          .unwrap()
+                          .trace_log.as_slice();
+          analysis.disassemble_trace_log(&mut trace_buffer, log)?;
+          let trace_string = String::from_utf8(trace_buffer).unwrap();
+          println!("BPF Program Instruction Trace:\n{}", trace_string);
+      }
+
+
         drop(vm);
         if let Some(execute_time) = invoke_context.execute_time.as_mut() {
             execute_time.stop();
@@ -1524,7 +1542,7 @@ pub mod test_utils {
             invoke_context.get_feature_set(),
             invoke_context.get_compute_budget(),
             false, /* deployment */
-            false, /* debugging_features */
+            true, /* debugging_features */
         );
         let program_runtime_environment = Arc::new(program_runtime_environment.unwrap());
         let num_accounts = invoke_context.transaction_context.get_number_of_accounts();
