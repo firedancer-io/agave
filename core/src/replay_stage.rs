@@ -2471,7 +2471,8 @@ impl ReplayStage {
                 fn fd_ext_resolv_tile_cnt() -> u64;
             }
 
-            let mut memory: [u8; 16] = [0; 16];
+            const MESSAGE_SIZE: u64 = 16+8+(16384*64);
+            let mut memory: [u8; MESSAGE_SIZE] = [0; MESSAGE_SIZE];
             memory[8..16].copy_from_slice(&root_bank.slot().to_le_bytes());
             let ptr = Arc::into_raw(Arc::clone(&root_bank));
             for _ in 0..unsafe { fd_ext_resolv_tile_cnt() }-1 {
@@ -2480,7 +2481,7 @@ impl ReplayStage {
             memory[0..8].copy_from_slice(&(ptr as usize).to_le_bytes());
 
             unsafe {
-                fd_ext_resolv_publish_root_bank(memory.as_ptr(), 16);
+                fd_ext_resolv_publish_root_bank(memory.as_ptr(), MESSAGE_SIZE);
             }
 
             rpc_subscriptions.notify_roots(rooted_slots);

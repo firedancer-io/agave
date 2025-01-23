@@ -886,6 +886,8 @@ pub struct Bank {
     /// The number of signatures from valid transactions in this slot
     signature_count: AtomicU64,
 
+    pub signatures: Vec<[u8; 64]>,
+
     /// Total capitalization, used to calculate inflation
     capitalization: AtomicU64,
 
@@ -4150,6 +4152,21 @@ impl Bank {
                 }
             }
         });
+
+        for processing_result in &processing_results {
+            match processing_result {
+                Ok(ProcessedTransaction::Executed(executed_tx)) => {
+                    self.signatures.push(executed_tx.signature);
+                }
+                Ok(ProcessedTransaction::FeesOnly(fees_only_tx)) => {
+                    self.update_transaction_statuses(
+                        sanitized_txs,
+                        &[Ok(ProcessedTransaction::FeesOnly(fees_only_tx.clone()))],
+                    );
+                }
+                Err(err) => (),
+            }
+        }
 
         let mut tips: u64 = 0;
         for processing_result in &processing_results {
