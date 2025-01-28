@@ -2534,6 +2534,16 @@ fn load_genesis(
         }
     }
 
+    // FIREDANCER: send genesis hash
+    let mut memory: [u8; 32] = [0; 32];
+    memory[0..32].copy_from_slice(&genesis_config.hash().to_bytes());
+    unsafe extern "C" {
+        fn fd_ext_plugin_publish_genesis_hash(kind: u8, data: *const u8, len: u64);
+    }
+    unsafe {
+        fd_ext_plugin_publish_genesis_hash(13, memory.as_ptr(), 32);
+    }
+
     Ok(genesis_config)
 }
 
