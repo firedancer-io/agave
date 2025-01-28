@@ -409,6 +409,16 @@ pub fn attempt_download_genesis_and_snapshot(
         rpc_client,
     )?;
 
+    let mut memory: [u8; 32] = [0; 32];
+    memory[0..32].copy_from_slice(&validator_config.expected_genesis_hash.unwrap().to_bytes());
+
+    extern "C" {
+        fn fd_ext_plugin_publish_genesis_hash(kind: u8, data: *const u8, len: u64);
+    }
+    unsafe {
+        fd_ext_plugin_publish_genesis_hash(13, memory.as_ptr(), 32);
+    }
+
     if let Some(gossip) = gossip.take() {
         shutdown_gossip_service(gossip);
     }
