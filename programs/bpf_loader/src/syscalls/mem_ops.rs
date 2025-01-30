@@ -591,7 +591,7 @@ mod tests {
             aligned_memory_mapping: false,
             ..Config::default()
         };
-        let memory_mapping = MemoryMapping::new(vec![], &config, &SBPFVersion::V2).unwrap();
+        let memory_mapping = MemoryMapping::new(vec![], &config, &SBPFVersion::V3).unwrap();
 
         let mut src_chunk_iter =
             MemoryChunkIterator::new(&memory_mapping, &[], AccessType::Load, 0, 1).unwrap();
@@ -605,7 +605,7 @@ mod tests {
             aligned_memory_mapping: false,
             ..Config::default()
         };
-        let memory_mapping = MemoryMapping::new(vec![], &config, &SBPFVersion::V2).unwrap();
+        let memory_mapping = MemoryMapping::new(vec![], &config, &SBPFVersion::V3).unwrap();
 
         let mut src_chunk_iter =
             MemoryChunkIterator::new(&memory_mapping, &[], AccessType::Load, u64::MAX, 1).unwrap();
@@ -622,7 +622,7 @@ mod tests {
         let memory_mapping = MemoryMapping::new(
             vec![MemoryRegion::new_readonly(&mem1, MM_PROGRAM_START)],
             &config,
-            &SBPFVersion::V2,
+            &SBPFVersion::V3,
         )
         .unwrap();
 
@@ -688,7 +688,7 @@ mod tests {
         let memory_mapping = MemoryMapping::new(
             vec![MemoryRegion::new_readonly(&mem1, MM_PROGRAM_START)],
             &config,
-            &SBPFVersion::V2,
+            &SBPFVersion::V3,
         )
         .unwrap();
 
@@ -753,7 +753,7 @@ mod tests {
                 MemoryRegion::new_readonly(&mem2, MM_PROGRAM_START + 8),
             ],
             &config,
-            &SBPFVersion::V2,
+            &SBPFVersion::V3,
         )
         .unwrap();
 
@@ -796,7 +796,7 @@ mod tests {
                 MemoryRegion::new_readonly(&mem2, MM_PROGRAM_START + 8),
             ],
             &config,
-            &SBPFVersion::V2,
+            &SBPFVersion::V3,
         )
         .unwrap();
 
@@ -848,7 +848,7 @@ mod tests {
                 MemoryRegion::new_readonly(&mem2, MM_PROGRAM_START + 8),
             ],
             &config,
-            &SBPFVersion::V2,
+            &SBPFVersion::V3,
         )
         .unwrap();
 
@@ -933,7 +933,7 @@ mod tests {
                 MemoryRegion::new_readonly(&mem2, MM_PROGRAM_START + 8),
             ],
             &config,
-            &SBPFVersion::V2,
+            &SBPFVersion::V3,
         )
         .unwrap();
 
@@ -961,7 +961,7 @@ mod tests {
                 MemoryRegion::new_writable(&mut mem4, MM_PROGRAM_START + 6),
             ],
             &config,
-            &SBPFVersion::V2,
+            &SBPFVersion::V3,
         )
         .unwrap();
 
@@ -991,7 +991,7 @@ mod tests {
                 MemoryRegion::new_readonly(&mem3, MM_PROGRAM_START + 9),
             ],
             &config,
-            &SBPFVersion::V2,
+            &SBPFVersion::V3,
         )
         .unwrap();
 
@@ -1055,7 +1055,7 @@ mod tests {
             offset += *region_len;
         }
 
-        let memory_mapping = MemoryMapping::new(regs, config, &SBPFVersion::V2).unwrap();
+        let memory_mapping = MemoryMapping::new(regs, config, &SBPFVersion::V3).unwrap();
 
         (mem, memory_mapping)
     }
