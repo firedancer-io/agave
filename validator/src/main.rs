@@ -211,6 +211,10 @@ where
             return;
         }
         ("set-identity", Some(subcommand_matches)) => {
+            // FIREDANCER: Operator must use Firedancer set-identity command.
+            if true {
+                panic!("When running Frankendancer, identity can only be changed by running `fdctl set-identity`");
+            }
             commands::set_identity::execute(subcommand_matches, &ledger_path);
             return;
         }
