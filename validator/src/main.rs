@@ -726,6 +726,11 @@ where
             return;
         }
         ("set-identity", Some(subcommand_matches)) => {
+            // FIREDANCER: Operator must use Firedancer set-identity command.
+            if true {
+                panic!("When running Frankendancer, identity can only be changed by running `fdctl set-identity`");
+            }
+
             let require_tower = subcommand_matches.is_present("require_tower");
 
             if let Ok(identity_keypair) = value_t!(subcommand_matches, "identity", String) {
