@@ -14,6 +14,7 @@ use {
 
 #[derive(Default)]
 pub(crate) struct Counter(AtomicU64);
+pub(crate) type CRDSCounter = [Counter; 14];
 
 impl Counter {
     pub(crate) fn add_measure(&self, x: &mut Measure) {
@@ -180,6 +181,29 @@ pub struct GossipStats {
     pub(crate) tvu_peers: Counter,
     pub(crate) verify_gossip_packets_time: Counter,
     pub(crate) window_request_loopback: Counter,
+    pub(crate) unprocessed_push_crds_counts: CRDSCounter,
+    pub(crate) unprocessed_pullresp_crds_counts: CRDSCounter,
+    pub(crate) unprocessed_total_crds_counts: CRDSCounter,
+}
+
+fn print_crds_stats(stats: &CRDSCounter, name: &'static str) {
+    datapoint_info!(
+        name,
+        ("LegacyContactInfo", stats[0].clear(), i64),
+        ("Vote", stats[1].clear(), i64),
+        ("LowestSlot", stats[2].clear(), i64),
+        ("LegacySnapshotHashes", stats[3].clear(), i64),
+        ("AccountsHashes", stats[4].clear(), i64),
+        ("EpochSlots", stats[5].clear(), i64),
+        ("LegacyVersion", stats[6].clear(), i64), 
+        ("Version", stats[7].clear(), i64),
+        ("NodeInstance", stats[8].clear(), i64),
+        ("DuplicateShred", stats[9].clear(), i64),
+        ("SnapshotHashes", stats[10].clear(), i64),
+        ("ContactInfo", stats[11].clear(), i64),
+        ("RestartLastVotedForkSlots", stats[12].clear(), i64),
+        ("RestartHeaviestFork", stats[13].clear(), i64)
+    )
 }
 
 pub(crate) fn submit_gossip_stats(
@@ -199,6 +223,18 @@ pub(crate) fn submit_gossip_stats(
         )
     };
     let num_nodes_staked = stakes.values().filter(|stake| **stake > 0).count();
+
+    // Add corresponding elements from push and pullresp counts
+    for i in 0..stats.unprocessed_total_crds_counts.len() {
+        stats.unprocessed_total_crds_counts[i].add_relaxed(
+            stats.unprocessed_push_crds_counts[i].0.load( Ordering::Relaxed ) + 
+            stats.unprocessed_pullresp_crds_counts[i].0.load( Ordering::Relaxed )
+        );
+    }
+    print_crds_stats( &stats.unprocessed_total_crds_counts, "cluster_info_total_crds_recv_stats");
+
+    print_crds_stats( &stats.unprocessed_push_crds_counts, "cluster_info_push_crds_recv_stats");
+    print_crds_stats( &stats.unprocessed_pullresp_crds_counts, "cluster_info_pullresp_crds_recv_stats");
     datapoint_info!(
         "cluster_info_stats",
         ("entrypoint", stats.entrypoint.clear(), i64),
@@ -606,7 +642,33 @@ pub(crate) fn submit_gossip_stats(
         ),
     );
     datapoint_info!(
-        "cluster_info_crds_stats",
+        "cluster_info_crds_stats_recv",
+        ("FullCRDSTableSize", crds_stats.crds_full_table_size, i64),
+        ("LegacyContactInfo", crds_stats.recv_totals[0], i64),
+        ("Vote", crds_stats.recv_totals[1], i64),
+        ("LowestSlot", crds_stats.recv_totals[2], i64),
+        ("LegacySnapshotHashes", crds_stats.recv_totals[3], i64),
+        ("AccountsHashes", crds_stats.recv_totals[4], i64),
+        ("EpochSlots", crds_stats.recv_totals[5], i64),
+        ("LegacyVersion", crds_stats.recv_totals[6], i64),
+        ("Version", crds_stats.recv_totals[7], i64),
+        ("NodeInstance", crds_stats.recv_totals[8], i64),
+        ("DuplicateShred", crds_stats.recv_totals[9], i64),
+        ("SnapshotHashes", crds_stats.recv_totals[10], i64),
+        ("ContactInfo", crds_stats.recv_totals[11], i64),
+        (
+            "RestartLastVotedForkSlots",
+            crds_stats.recv_totals[12],
+            i64
+        ),
+        (
+            "RestartHeaviestFork",
+            crds_stats.recv_totals[13],
+            i64
+        ),
+    );
+    datapoint_info!(
+        "cluster_info_crds_stats_success",
         ("LegacyContactInfo-push", crds_stats.push.counts[0], i64),
         ("LegacyContactInfo-pull", crds_stats.pull.counts[0], i64),
         ("Vote-push", crds_stats.push.counts[1], i64),
@@ -695,6 +757,33 @@ pub(crate) fn submit_gossip_stats(
         ("all-push", crds_stats.push.fails.iter().sum::<usize>(), i64),
         ("all-pull", crds_stats.pull.fails.iter().sum::<usize>(), i64),
     );
+    datapoint_info!(
+        "cluster_info_crds_stats_duplicates",
+        ("LegacyContactInfo", crds_stats.num_duplicate_crds_values[0], i64),
+        ("Vote", crds_stats.num_duplicate_crds_values[1], i64),
+        ("LowestSlot", crds_stats.num_duplicate_crds_values[2], i64),
+        ("LegacySnapshotHashes", crds_stats.num_duplicate_crds_values[3], i64),
+        ("AccountsHashes", crds_stats.num_duplicate_crds_values[4], i64),
+        ("EpochSlots", crds_stats.num_duplicate_crds_values[5], i64),
+        ("LegacyVersion", crds_stats.num_duplicate_crds_values[6], i64),
+        ("Version", crds_stats.num_duplicate_crds_values[7], i64),
+        ("NodeInstance", crds_stats.num_duplicate_crds_values[8], i64),
+        ("DuplicateShred", crds_stats.num_duplicate_crds_values[9], i64),
+        ("SnapshotHashes", crds_stats.num_duplicate_crds_values[10], i64),
+        ("ContactInfo", crds_stats.num_duplicate_crds_values[11], i64),
+        (
+            "RestartLastVotedForkSlots",
+            crds_stats.num_duplicate_crds_values[12],
+            i64
+        ),
+        (
+            "RestartHeaviestFork",
+            crds_stats.num_duplicate_crds_values[13],
+            i64
+        ),
+        ("all", crds_stats.num_duplicate_crds_values.iter().sum::<usize>(), i64),
+    );
+
     if !log::log_enabled!(log::Level::Trace) {
         return;
     }

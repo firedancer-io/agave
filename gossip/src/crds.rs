@@ -120,6 +120,10 @@ pub(crate) struct CrdsStats {
     /// and that message was later received via a PushMessage
     pub(crate) num_redundant_pull_responses: u64,
     pub(crate) num_duplicate_push_messages: u64,
+    pub(crate) num_duplicate_crds_values: CrdsCountsArray,
+    pub(crate) recv_totals: CrdsCountsArray,
+    pub(crate) crds_table_size: u64,
+    pub(crate) crds_full_table_size: u64,
 }
 
 /// This structure stores some local metadata associated with the CrdsValue
@@ -243,8 +247,11 @@ impl Crds {
     ) -> Result<(), CrdsError> {
         let label = value.label();
         let pubkey = value.pubkey();
-        let value = VersionedCrdsValue::new(value, self.cursor, now, route);
         let mut stats = self.stats.lock().unwrap();
+        stats.recv_totals[ordinal(&value)] += 1;
+        let value = VersionedCrdsValue::new(value, self.cursor, now, route);
+        stats.crds_table_size = self.table.len() as u64; /* might be off by at most 1 */
+        stats.crds_full_table_size = ( self.table.len() + self.num_purged() ) as u64; /* might be off by at most 1 */
         match self.table.entry(label) {
             Entry::Vacant(entry) => {
                 stats.record_insert(&value, route);
@@ -321,8 +328,9 @@ impl Crds {
                     self.purged.push_back((value.value_hash, now));
                     Err(CrdsError::InsertFailed)
                 } else if matches!(route, GossipRoute::PushMessage(_)) {
+                    stats.num_duplicate_crds_values[ordinal(&entry.get().value)] += 1;
                     let entry = entry.get_mut();
-                    if entry.num_push_recv == Some(0) {
+                    if entry.num_push_recv == Some(0) { // entry was initially received via PullResponse
                         stats.num_redundant_pull_responses += 1;
                     } else {
                         stats.num_duplicate_push_messages += 1;
@@ -331,6 +339,7 @@ impl Crds {
                     entry.num_push_recv = Some(num_push_dups.saturating_add(1));
                     Err(CrdsError::DuplicatePush(num_push_dups))
                 } else {
+                    stats.num_duplicate_crds_values[ordinal(&entry.get().value)] += 1;
                     Err(CrdsError::InsertFailed)
                 }
             }
@@ -750,6 +759,26 @@ impl CrdsDataStats {
             CrdsData::RestartHeaviestFork(_) => 13,
             // Update CrdsCountsArray if new items are added here.
         }
+    }
+}
+
+pub fn ordinal(value: &CrdsValue) -> usize {
+    match &value.data {
+        CrdsData::LegacyContactInfo(_) => 0,
+        CrdsData::Vote(_, _) => 1,
+        CrdsData::LowestSlot(_, _) => 2,
+        CrdsData::LegacySnapshotHashes(_) => 3,
+        CrdsData::AccountsHashes(_) => 4,
+        CrdsData::EpochSlots(_, _) => 5,
+        CrdsData::LegacyVersion(_) => 6,
+        CrdsData::Version(_) => 7,
+        CrdsData::NodeInstance(_) => 8,
+        CrdsData::DuplicateShred(_, _) => 9,
+        CrdsData::SnapshotHashes(_) => 10,
+        CrdsData::ContactInfo(_) => 11,
+        CrdsData::RestartLastVotedForkSlots(_) => 12,
+        CrdsData::RestartHeaviestFork(_) => 13,
+        // Update CrdsCountsArray if new items are added here.
     }
 }
 
