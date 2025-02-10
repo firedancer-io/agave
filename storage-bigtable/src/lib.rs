@@ -258,6 +258,9 @@ impl From<StoredConfirmedBlockTransactionStatusMeta> for TransactionStatusMeta {
             loaded_addresses: LoadedAddresses::default(),
             return_data: None,
             compute_units_consumed: None,
+            loaded_accounts_data_size: None,
+            estimated_cost: None,
+            actual_cost: None,
         }
     }
 }

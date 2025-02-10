@@ -364,6 +364,9 @@ impl Banks for BanksServer {
                 result: details.status,
                 metadata: Some(TransactionMetadata {
                     compute_units_consumed: details.executed_units,
+                    loaded_accounts_data_size: details.loaded_account_stats.loaded_accounts_data_size as u64,
+                    estimated_cost: details.estimated_cost,
+                    actual_cost: details.actual_cost,
                     log_messages: details.log_messages.unwrap_or_default(),
                     return_data: details.return_data,
                 }),

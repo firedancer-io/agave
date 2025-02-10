@@ -45,6 +45,9 @@ pub struct TransactionSimulationDetails {
 pub struct TransactionMetadata {
     pub log_messages: Vec<String>,
     pub compute_units_consumed: u64,
+    pub loaded_accounts_data_size: u64,
+    pub estimated_cost: u64,
+    pub actual_cost: u64,
     pub return_data: Option<TransactionReturnData>,
 }
 

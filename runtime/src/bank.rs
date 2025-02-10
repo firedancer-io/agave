@@ -96,7 +96,7 @@ use {
         create_program_runtime_environment_v1, create_program_runtime_environment_v2,
     },
     solana_compute_budget::compute_budget::ComputeBudget,
-    solana_cost_model::{block_cost_limits::simd_0207_block_limits, cost_tracker::CostTracker},
+    solana_cost_model::{block_cost_limits::simd_0207_block_limits, cost_tracker::CostTracker, cost_model::CostModel},
     solana_feature_set::{
         self as feature_set, remove_rounding_in_fee_calculation, reward_full_priority_fee,
         FeatureSet,
@@ -4224,15 +4224,18 @@ impl Bank {
             update_transaction_statuses_us,
         );
 
-        Self::create_commit_results(processing_results)
+        Self::create_commit_results(sanitized_txs, processing_results, self.feature_set.as_ref())
     }
 
     fn create_commit_results(
+        sanitized_txs: &[SanitizedTransaction],
         processing_results: Vec<TransactionProcessingResult>,
+        feature_set: &FeatureSet,
     ) -> Vec<TransactionCommitResult> {
-        processing_results
-            .into_iter()
-            .map(|processing_result| match processing_result? {
+        sanitized_txs
+            .iter()
+            .zip(processing_results)
+            .map(|(sanitized_tx, processing_result)| match processing_result? {
                 ProcessedTransaction::Executed(executed_tx) => {
                     let execution_details = executed_tx.execution_details;
                     let LoadedTransaction {
@@ -4262,6 +4265,13 @@ impl Bank {
                             loaded_accounts_count: loaded_accounts.len(),
                             loaded_accounts_data_size,
                         },
+                        estimated_cost: CostModel::calculate_cost(sanitized_tx, feature_set).sum(),
+                        actual_cost: CostModel::calculate_cost_for_executed_transaction(
+                            sanitized_tx, 
+                            execution_details.executed_units,
+                            loaded_accounts_data_size,
+                            feature_set,
+                        ).sum(),
                     })
                 }
                 ProcessedTransaction::FeesOnly(fees_only_tx) => Ok(CommittedTransaction {
@@ -4277,6 +4287,13 @@ impl Bank {
                         loaded_accounts_data_size: fees_only_tx.rollback_accounts.data_size()
                             as u32,
                     },
+                    estimated_cost: CostModel::calculate_cost(sanitized_tx, feature_set).sum(),
+                    actual_cost: CostModel::calculate_cost_for_executed_transaction(
+                        sanitized_tx, 
+                        0,
+                        fees_only_tx.rollback_accounts.data_size() as u32,
+                        feature_set
+                    ).sum(),
                 }),
             })
             .collect()

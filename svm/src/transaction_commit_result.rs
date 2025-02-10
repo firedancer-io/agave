@@ -19,6 +19,8 @@ pub struct CommittedTransaction {
     pub fee_details: FeeDetails,
     pub rent_debits: RentDebits,
     pub loaded_account_stats: TransactionLoadedAccountsStats,
+    pub estimated_cost: u64,
+    pub actual_cost: u64,
 }
 
 pub trait TransactionCommitResultExtensions {

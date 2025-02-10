@@ -1023,6 +1023,9 @@ mod tests {
                 loaded_addresses: LoadedAddresses::default(),
                 return_data: Some(TransactionReturnData::default()),
                 compute_units_consumed: Some(1234),
+                loaded_accounts_data_size: Some(4321),
+                estimated_cost: Some(4321),
+                actual_cost: Some(4321),
             },
         });
         let expected_block = ConfirmedBlock {
@@ -1083,6 +1086,9 @@ mod tests {
                 meta.rewards = None; // Legacy bincode implementation does not support rewards
                 meta.return_data = None; // Legacy bincode implementation does not support return data
                 meta.compute_units_consumed = None; // Legacy bincode implementation does not support CU consumed
+                meta.loaded_accounts_data_size = None; // Legacy bincode implementation does not support loaded_accounts_data_size
+                meta.estimated_cost = None; // Legacy bincode implementation does not support estimated_cost
+                meta.actual_cost = None; // Legacy bincode implementation does not support actual_cost
             }
             assert_eq!(block, bincode_block.into());
         } else {

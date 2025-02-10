@@ -274,6 +274,12 @@ impl LogTransactionService {
                     OptionSerializer::Some(cu_consumed) => cu_consumed,
                     _ => 0,
                 });
+            // let loaded_accounts_data_size = meta
+            //     .as_ref()
+            //     .map_or(0, |meta| match meta.loaded_accounts_data_size {
+            //         OptionSerializer::Some(loaded_accounts_data_size) => loaded_accounts_data_size,
+            //         _ => 0,
+            //     });
             let signature = &transaction.signatures[0];
 
             total_cu_consumed = total_cu_consumed.saturating_add(cu_consumed);

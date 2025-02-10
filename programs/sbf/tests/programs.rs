@@ -179,6 +179,7 @@ fn execute_transactions(
                     return_data,
                     executed_units,
                     fee_details,
+                    loaded_account_stats,
                     ..
                 } = committed_tx;
 
@@ -198,6 +199,9 @@ fn execute_transactions(
                     loaded_addresses: LoadedAddresses::default(),
                     return_data,
                     compute_units_consumed: Some(executed_units),
+                    loaded_account_data_size: Some(loaded_account_stats.loaded_accounts_data_size),
+                    estimated_cost: Some(committed_tx.estimated_cost),
+                    actual_cost: Some(committed_tx.actual_cost),
                 };
 
                 ConfirmedTransactionWithStatusMeta {

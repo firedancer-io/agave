@@ -5192,6 +5192,8 @@ pub mod tests {
                     loaded_accounts_data_size: actual_loaded_accounts_data_size,
                     loaded_accounts_count: 2,
                 },
+                estimated_cost: 0,
+                actual_cost: 0, // JHERRERA_TODO
             }),
             Err(TransactionError::AccountNotFound),
         ];

@@ -125,6 +125,7 @@ impl TransactionStatusService {
                         executed_units,
                         fee_details,
                         rent_debits,
+                        loaded_account_stats,
                         ..
                     } = committed_tx;
 
@@ -161,6 +162,9 @@ impl TransactionStatusService {
                         loaded_addresses,
                         return_data,
                         compute_units_consumed: Some(executed_units),
+                        loaded_accounts_data_size: Some(loaded_account_stats.loaded_accounts_data_size.into()),
+                        estimated_cost: Some(committed_tx.estimated_cost),
+                        actual_cost: Some(committed_tx.actual_cost),
                     };
 
                     if let Some(transaction_notifier) = transaction_notifier.as_ref() {
@@ -367,6 +371,8 @@ pub(crate) mod tests {
             fee_details: FeeDetails::default(),
             rent_debits,
             loaded_account_stats: TransactionLoadedAccountsStats::default(),
+            estimated_cost: 0,
+            actual_cost: 0, // JHERRERA_TODO
         });
 
         let balances = TransactionBalancesSet {
@@ -495,6 +501,8 @@ pub(crate) mod tests {
             fee_details: FeeDetails::default(),
             rent_debits: RentDebits::default(),
             loaded_account_stats: TransactionLoadedAccountsStats::default(),
+            estimated_cost: 0,
+            actual_cost: 0, // JHERRERA_TODO
         });
 
         let balances = TransactionBalancesSet {

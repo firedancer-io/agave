@@ -178,6 +178,12 @@ pub struct StoredTransactionStatusMeta {
     pub return_data: Option<TransactionReturnData>,
     #[serde(deserialize_with = "default_on_eof")]
     pub compute_units_consumed: Option<u64>,
+    #[serde(deserialize_with = "default_on_eof")]
+    pub loaded_accounts_data_size: Option<u64>,
+    #[serde(deserialize_with = "default_on_eof")]
+    pub estimated_cost: Option<u64>,
+    #[serde(deserialize_with = "default_on_eof")]
+    pub actual_cost: Option<u64>,
 }
 
 impl From<StoredTransactionStatusMeta> for TransactionStatusMeta {
@@ -194,6 +200,9 @@ impl From<StoredTransactionStatusMeta> for TransactionStatusMeta {
             rewards,
             return_data,
             compute_units_consumed,
+            loaded_accounts_data_size,
+            estimated_cost,
+            actual_cost
         } = value;
         Self {
             status,
@@ -211,6 +220,9 @@ impl From<StoredTransactionStatusMeta> for TransactionStatusMeta {
             loaded_addresses: LoadedAddresses::default(),
             return_data,
             compute_units_consumed,
+            loaded_accounts_data_size,
+            estimated_cost,
+            actual_cost,
         }
     }
 }
@@ -231,6 +243,9 @@ impl TryFrom<TransactionStatusMeta> for StoredTransactionStatusMeta {
             loaded_addresses,
             return_data,
             compute_units_consumed,
+            loaded_accounts_data_size,
+            estimated_cost,
+            actual_cost,
         } = value;
 
         if !loaded_addresses.is_empty() {
@@ -256,6 +271,9 @@ impl TryFrom<TransactionStatusMeta> for StoredTransactionStatusMeta {
                 .map(|rewards| rewards.into_iter().map(|reward| reward.into()).collect()),
             return_data,
             compute_units_consumed,
+            loaded_accounts_data_size,
+            estimated_cost,
+            actual_cost,
         })
     }
 }

@@ -185,6 +185,9 @@ fn build_simple_ui_transaction_status_meta(
         loaded_addresses: OptionSerializer::Skip,
         return_data: OptionSerializer::Skip,
         compute_units_consumed: OptionSerializer::Skip,
+        loaded_accounts_data_size: OptionSerializer::Skip,
+        estimated_cost: OptionSerializer::Skip,
+        actual_cost: OptionSerializer::Skip,
     }
 }
 
@@ -223,6 +226,9 @@ fn parse_ui_transaction_status_meta(
             meta.return_data.map(|return_data| return_data.into()),
         ),
         compute_units_consumed: OptionSerializer::or_skip(meta.compute_units_consumed),
+        loaded_accounts_data_size: OptionSerializer::or_skip(meta.loaded_accounts_data_size),
+        estimated_cost: OptionSerializer::or_skip(meta.estimated_cost),
+        actual_cost: OptionSerializer::or_skip(meta.actual_cost),
     }
 }
 
@@ -881,6 +887,9 @@ mod test {
             },
             return_data: None,
             compute_units_consumed: None,
+            loaded_accounts_data_size: None,
+            estimated_cost: None,
+            actual_cost: None,
         };
         let expected_json_output_value: serde_json::Value = serde_json::from_str(
             "{\

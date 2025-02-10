@@ -278,6 +278,9 @@ pub struct UiTransactionStatusMeta {
         skip_serializing_if = "OptionSerializer::should_skip"
     )]
     pub compute_units_consumed: OptionSerializer<u64>,
+    pub loaded_accounts_data_size: OptionSerializer<u64>,
+    pub estimated_cost: OptionSerializer<u64>,
+    pub actual_cost: OptionSerializer<u64>,
 }
 
 impl From<TransactionStatusMeta> for UiTransactionStatusMeta {
@@ -307,6 +310,9 @@ impl From<TransactionStatusMeta> for UiTransactionStatusMeta {
                 meta.return_data.map(|return_data| return_data.into()),
             ),
             compute_units_consumed: OptionSerializer::or_skip(meta.compute_units_consumed),
+            loaded_accounts_data_size: OptionSerializer::or_skip(meta.loaded_accounts_data_size),
+            estimated_cost: OptionSerializer::or_skip(meta.estimated_cost),
+            actual_cost: OptionSerializer::or_skip(meta.actual_cost),
         }
     }
 }
@@ -550,6 +556,9 @@ pub struct TransactionStatusMeta {
     pub loaded_addresses: LoadedAddresses,
     pub return_data: Option<TransactionReturnData>,
     pub compute_units_consumed: Option<u64>,
+    pub loaded_accounts_data_size: Option<u64>,
+    pub actual_cost: Option<u64>,
+    pub estimated_cost: Option<u64>,
 }
 
 impl Default for TransactionStatusMeta {
@@ -567,6 +576,9 @@ impl Default for TransactionStatusMeta {
             loaded_addresses: LoadedAddresses::default(),
             return_data: None,
             compute_units_consumed: None,
+            loaded_accounts_data_size: None,
+            estimated_cost: None,
+            actual_cost: None,
         }
     }
 }

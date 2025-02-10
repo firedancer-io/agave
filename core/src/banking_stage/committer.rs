@@ -223,15 +223,16 @@ pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_vo
     );
 
     for i in 0..txn_count {
-        let (processing_result, consumed_cus, transaction_err) =
+        let (processing_result, consumed_cus, loaded_acct_data_cost, transaction_err) =
             match &output.processing_results[i as usize] {
-                Err(err) => (0, 0u32, transaction_error_to_code(&err)),
+                Err(err) => (0, 0u32, 0u32, transaction_error_to_code(&err)),
                 Ok(Executed(tx)) => {
                     (
                         FD_BANK_TRANSACTION_LANDED | FD_BANK_TRANSACTION_EXECUTED,
                         /* Executed CUs must be less than the block CU limit, which is much less
                            than UINT_MAX, so the cast should be safe */
                         tx.execution_details.executed_units.try_into().unwrap(),
+                        tx.loaded_transaction.loaded_accounts_data_size,
                         match &tx.execution_details.status {
                             Ok(_) => 0,
                             Err(err) => transaction_error_to_code( &err )
@@ -239,12 +240,12 @@ pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_vo
                     )
                 },
                 Ok(FeesOnly(tx)) =>  (
-                    FD_BANK_TRANSACTION_LANDED, 0u32, transaction_error_to_code( &tx.load_error )
+                    FD_BANK_TRANSACTION_LANDED, 0u32, tx.rollback_accounts.data_size() as u32, transaction_error_to_code( &tx.load_error )
                 )
             };
         unsafe { *out_processing_result.offset(i as isize) = processing_result };
         unsafe { *out_transaction_err.offset(i as isize) = transaction_err };
-        unsafe { *out_consumed_cus.offset(i as isize) = consumed_cus };
+        unsafe { *out_consumed_cus.offset(i as isize) = consumed_cus + loaded_acct_data_cost };
     }
 
     let load_and_execute_output: Box<LoadAndExecuteTransactionsOutput> = Box::new(output);
