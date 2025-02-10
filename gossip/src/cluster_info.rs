@@ -19,7 +19,7 @@ use {
             submit_gossip_stats, Counter, GossipStats, ScopedTimer, TimedGuard,
         },
         contact_info::{self, ContactInfo, ContactInfoQuery, Error as ContactInfoError},
-        crds::{Crds, Cursor, GossipRoute},
+        crds::{ordinal, Crds, Cursor, GossipRoute},
         crds_data::{self, CrdsData, EpochSlotsIndex, LowestSlot, SnapshotHashes, Vote},
         crds_gossip::CrdsGossip,
         crds_gossip_error::CrdsGossipError,
@@ -2055,6 +2055,7 @@ impl ClusterInfo {
                     }
                     data.retain(&mut verify_gossip_addr);
                     if !data.is_empty() {
+                        data.iter().for_each(| value | self.stats.unprocessed_pullresp_crds_counts[ordinal(&value)].add_relaxed(1));
                         pull_responses.append(&mut data);
                     }
                 }
@@ -2064,6 +2065,7 @@ impl ClusterInfo {
                     }
                     data.retain(&mut verify_gossip_addr);
                     if !data.is_empty() {
+                        data.iter().for_each(| value | self.stats.unprocessed_push_crds_counts[ordinal(&value)].add_relaxed(1));
                         push_messages.push((from, data));
                     }
                 }
