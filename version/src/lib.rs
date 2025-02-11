@@ -53,16 +53,23 @@ fn compute_commit(sha1: Option<&'static str>) -> Option<u32> {
     u32::from_str_radix(sha1?.get(..8)?, /*radix:*/ 16).ok()
 }
 
+extern "C" {
+    pub(crate) static fdctl_major_version: u64;
+    pub(crate) static fdctl_minor_version: u64;
+    pub(crate) static fdctl_patch_version: u64;
+    pub(crate) static fdctl_commit_ref: u32;
+}
+
 impl Default for Version {
     fn default() -> Self {
         let feature_set =
             u32::from_le_bytes(agave_feature_set::ID.as_ref()[..4].try_into().unwrap());
         Self {
             // FIREDANCER: Report client as Firedancer to gossip
-            major: env!("FIREDANCER_VERSION_MAJOR").parse().unwrap(),
-            minor: env!("FIREDANCER_VERSION_MINOR").parse().unwrap(),
-            patch: env!("FIREDANCER_VERSION_PATCH").parse().unwrap(),
-            commit: compute_commit(option_env!("FIREDANCER_CI_COMMIT")).unwrap_or_default(),
+            major: unsafe { fdctl_major_version as u16 },
+            minor: unsafe { fdctl_minor_version as u16 },
+            patch: unsafe { fdctl_patch_version as u16 },
+            commit: unsafe { fdctl_commit_ref },
             feature_set,
             // Other client implementations need to modify this line.
             client: u16::try_from(ClientId::Firedancer).unwrap(),
