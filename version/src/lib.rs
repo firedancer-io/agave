@@ -59,10 +59,10 @@ impl Default for Version {
             u32::from_le_bytes(solana_feature_set::ID.as_ref()[..4].try_into().unwrap());
         Self {
             // FIREDANCER: Report client as Firedancer to gossip
-            major: env!("FIREDANCER_VERSION_MAJOR").parse().unwrap(),
-            minor: env!("FIREDANCER_VERSION_MINOR").parse().unwrap(),
-            patch: env!("FIREDANCER_VERSION_PATCH").parse().unwrap(),
-            commit: compute_commit(option_env!("FIREDANCER_CI_COMMIT")).unwrap_or_default(),
+            major: unsafe { fdctl_major_version as u16 },
+            minor: unsafe { fdctl_minor_version as u16 },
+            patch: unsafe { fdctl_patch_version as u16 },
+            commit: unsafe { fdctl_commit_ref },
             feature_set,
             // Other client implementations need to modify this line.
             client: u16::try_from(ClientId::Firedancer).unwrap(),
@@ -132,6 +132,13 @@ macro_rules! version {
     () => {
         &*format!("{:?}", $crate::Version::default())
     };
+}
+
+extern "C" {
+    pub(crate) static fdctl_major_version: u64;
+    pub(crate) static fdctl_minor_version: u64;
+    pub(crate) static fdctl_patch_version: u64;
+    pub(crate) static fdctl_commit_ref: u32;
 }
 
 #[cfg(test)]
