@@ -31,11 +31,12 @@ impl Default for LegacyVersion2 {
     fn default() -> Self {
         let feature_set =
             u32::from_le_bytes(agave_feature_set::ID.as_ref()[..4].try_into().unwrap());
+        let _ = compute_commit(None);
         Self {
-            major: env!("FIREDANCER_VERSION_MAJOR").parse().unwrap(),
-            minor: env!("FIREDANCER_VERSION_MINOR").parse().unwrap(),
-            patch: env!("FIREDANCER_VERSION_PATCH").parse().unwrap(),
-            commit: compute_commit(option_env!("FIREDANCER_CI_COMMIT")),
+            major: unsafe { crate::fdctl_major_version as u16 },
+            minor: unsafe { crate::fdctl_minor_version as u16 },
+            patch: unsafe { crate::fdctl_patch_version as u16 },
+            commit: Some(unsafe { crate::fdctl_commit_ref }),
             feature_set,
         }
     }
