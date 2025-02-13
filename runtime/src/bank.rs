@@ -267,6 +267,15 @@ pub extern "C" fn fd_ext_bank_release( bank: *const std::ffi::c_void ) {
 }
 
 #[no_mangle]
+pub extern "C" fn fd_ext_bank_oldest_reference_slot( bank: *const std::ffi::c_void ) -> u64 {
+    let bank = unsafe { &*(bank as *const Bank) };
+    use itertools::Itertools;
+
+    warn!("slot {}. slot_parents {}", bank.slot, bank.slot_parents.iter().format(", "));
+    *bank.slot_parents.front().unwrap()
+}
+
+#[no_mangle]
 pub extern "C" fn fd_ext_bank_release_thunks( load_and_execute_output: *mut std::ffi::c_void ) {
     let load_and_execute_output: Box<LoadAndExecuteTransactionsOutput> = unsafe { Box::from_raw( load_and_execute_output as *mut LoadAndExecuteTransactionsOutput ) };
     drop(load_and_execute_output);
@@ -619,6 +628,7 @@ impl PartialEq for Bank {
             status_cache: _,
             blockhash_queue,
             ancestors,
+            slot_parents,
             hash,
             parent_hash,
             parent_slot,
@@ -690,6 +700,7 @@ impl PartialEq for Bank {
         } = self;
         *blockhash_queue.read().unwrap() == *other.blockhash_queue.read().unwrap()
             && ancestors == &other.ancestors
+            && slot_parents == &other.slot_parents
             && *hash.read().unwrap() == *other.hash.read().unwrap()
             && parent_hash == &other.parent_hash
             && parent_slot == &other.parent_slot
@@ -851,6 +862,8 @@ pub struct Bank {
 
     /// The set of parents including this bank
     pub ancestors: Ancestors,
+
+    pub slot_parents: std::collections::VecDeque<Slot>,
 
     /// Hash of this Bank's state. Only meaningful after freezing.
     hash: RwLock<Hash>,
@@ -1191,6 +1204,7 @@ impl Bank {
             status_cache: Arc::<RwLock<BankStatusCache>>::default(),
             blockhash_queue: RwLock::<BlockhashQueue>::default(),
             ancestors: Ancestors::default(),
+            slot_parents: std::collections::VecDeque::with_capacity(MAX_PROCESSING_AGE+2),
             hash: RwLock::<Hash>::default(),
             parent_hash: Hash::default(),
             parent_slot: Slot::default(),
@@ -1287,6 +1301,7 @@ impl Bank {
         let accounts = Accounts::new(Arc::new(accounts_db));
         let mut bank = Self::default_with_accounts(accounts);
         bank.ancestors = Ancestors::from(vec![bank.slot()]);
+        bank.slot_parents.push_back(bank.slot());
         bank.compute_budget = runtime_config.compute_budget;
         bank.transaction_account_lock_limit = runtime_config.transaction_account_lock_limit;
         bank.transaction_debug_keys = debug_keys;
@@ -1472,6 +1487,7 @@ impl Bank {
             collector_id: *collector_id,
             collector_fees: AtomicU64::new(0),
             ancestors: Ancestors::default(),
+            slot_parents: std::collections::VecDeque::with_capacity(MAX_PROCESSING_AGE+2),
             hash: RwLock::new(Hash::default()),
             is_delta: AtomicBool::new(false),
             tick_height: AtomicU64::new(parent.tick_height.load(Relaxed)),
@@ -1524,6 +1540,12 @@ impl Bank {
             });
             new.ancestors = Ancestors::from(ancestors);
         });
+
+        new.slot_parents = parent.slot_parents.clone();
+        if new.slot_parents.len() > 151 {
+            new.slot_parents.pop_front();
+        }
+        new.slot_parents.push_back(new.slot());
 
         // Following code may touch AccountsDb, requiring proper ancestors
         let (_, update_epoch_time_us) = measure_us!({
@@ -1820,6 +1842,8 @@ impl Bank {
     ) -> Self {
         let now = Instant::now();
         let ancestors = Ancestors::from(&fields.ancestors);
+        let mut slot_parents = std::collections::VecDeque::with_capacity(MAX_PROCESSING_AGE+2);
+        slot_parents.push_back(fields.slot);
         // For backward compatibility, we can only serialize and deserialize
         // Stakes<Delegation> in BankFieldsTo{Serialize,Deserialize}. But Bank
         // caches Stakes<StakeAccount>. Below Stakes<StakeAccount> is obtained
@@ -1848,6 +1872,7 @@ impl Bank {
             status_cache: Arc::<RwLock<BankStatusCache>>::default(),
             blockhash_queue: RwLock::new(fields.blockhash_queue),
             ancestors,
+            slot_parents,
             hash: RwLock::new(fields.hash),
             parent_hash: fields.parent_hash,
             parent_slot: fields.parent_slot,
