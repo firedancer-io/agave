@@ -73,8 +73,9 @@ pub struct Tpu {
     banking_stage: BankingStage,
     cluster_info_vote_listener: ClusterInfoVoteListener,
     broadcast_stage: BroadcastStage,
-    tpu_quic_t: thread::JoinHandle<()>,
-    tpu_forwards_quic_t: thread::JoinHandle<()>,
+    // FIREDANCER: QUIC threads are disabled
+    // tpu_quic_t: thread::JoinHandle<()>,
+    // tpu_forwards_quic_t: thread::JoinHandle<()>,
     tpu_entry_notifier: Option<TpuEntryNotifier>,
     staked_nodes_updater_service: StakedNodesUpdaterService,
     tracer_thread_hdl: TracerThread,
@@ -155,49 +156,62 @@ impl Tpu {
 
         let (non_vote_sender, non_vote_receiver) = banking_tracer.create_channel_non_vote();
 
-        let SpawnServerResult {
-            endpoints: _,
-            thread: tpu_quic_t,
-            key_updater,
-        } = spawn_server_multi(
-            "solQuicTpu",
-            "quic_streamer_tpu",
-            transactions_quic_sockets,
-            keypair,
-            packet_sender,
-            exit.clone(),
-            MAX_QUIC_CONNECTIONS_PER_PEER,
-            staked_nodes.clone(),
-            MAX_STAKED_CONNECTIONS,
-            MAX_UNSTAKED_CONNECTIONS,
-            DEFAULT_MAX_STREAMS_PER_MS,
-            tpu_max_connections_per_ipaddr_per_minute,
-            DEFAULT_WAIT_FOR_CHUNK_TIMEOUT,
-            tpu_coalesce,
-        )
-        .unwrap();
+        // FIREDANCER: Unused varaibles
+        let _ = keypair;
+        let _ = tpu_max_connections_per_ipaddr_per_minute;
+        let _ = transactions_quic_sockets;
+        let _ = transactions_forwards_quic_sockets;
+        let _ = DEFAULT_MAX_STREAMS_PER_MS;
+        let _ = DEFAULT_WAIT_FOR_CHUNK_TIMEOUT;
+        let _ = spawn_server_multi;
+        let _ = SpawnServerResult::from;
+        let _ = MAX_STAKED_CONNECTIONS;
+        let _ = MAX_UNSTAKED_CONNECTIONS;
 
-        let SpawnServerResult {
-            endpoints: _,
-            thread: tpu_forwards_quic_t,
-            key_updater: forwards_key_updater,
-        } = spawn_server_multi(
-            "solQuicTpuFwd",
-            "quic_streamer_tpu_forwards",
-            transactions_forwards_quic_sockets,
-            keypair,
-            forwarded_packet_sender,
-            exit.clone(),
-            MAX_QUIC_CONNECTIONS_PER_PEER,
-            staked_nodes.clone(),
-            MAX_STAKED_CONNECTIONS.saturating_add(MAX_UNSTAKED_CONNECTIONS),
-            0, // Prevent unstaked nodes from forwarding transactions
-            DEFAULT_MAX_STREAMS_PER_MS,
-            tpu_max_connections_per_ipaddr_per_minute,
-            DEFAULT_WAIT_FOR_CHUNK_TIMEOUT,
-            tpu_coalesce,
-        )
-        .unwrap();
+        // FIREDANCER: QUIC servers are disabled
+        // let SpawnServerResult {
+        //     endpoints: _,
+        //     thread: tpu_quic_t,
+        //     key_updater,
+        // } = spawn_server_multi(
+        //     "solQuicTpu",
+        //     "quic_streamer_tpu",
+        //     transactions_quic_sockets,
+        //     keypair,
+        //     packet_sender,
+        //     exit.clone(),
+        //     MAX_QUIC_CONNECTIONS_PER_PEER,
+        //     staked_nodes.clone(),
+        //     MAX_STAKED_CONNECTIONS,
+        //     MAX_UNSTAKED_CONNECTIONS,
+        //     DEFAULT_MAX_STREAMS_PER_MS,
+        //     tpu_max_connections_per_ipaddr_per_minute,
+        //     DEFAULT_WAIT_FOR_CHUNK_TIMEOUT,
+        //     tpu_coalesce,
+        // )
+        // .unwrap();
+
+        // let SpawnServerResult {
+        //     endpoints: _,
+        //     thread: tpu_forwards_quic_t,
+        //     key_updater: forwards_key_updater,
+        // } = spawn_server_multi(
+        //     "solQuicTpuFwd",
+        //     "quic_streamer_tpu_forwards",
+        //     transactions_forwards_quic_sockets,
+        //     keypair,
+        //     forwarded_packet_sender,
+        //     exit.clone(),
+        //     MAX_QUIC_CONNECTIONS_PER_PEER,
+        //     staked_nodes.clone(),
+        //     MAX_STAKED_CONNECTIONS.saturating_add(MAX_UNSTAKED_CONNECTIONS),
+        //     0, // Prevent unstaked nodes from forwarding transactions
+        //     DEFAULT_MAX_STREAMS_PER_MS,
+        //     tpu_max_connections_per_ipaddr_per_minute,
+        //     DEFAULT_WAIT_FOR_CHUNK_TIMEOUT,
+        //     tpu_coalesce,
+        // )
+        // .unwrap();
 
         let sigverify_stage = {
             let verifier = TransactionSigVerifier::new(non_vote_sender);
@@ -284,13 +298,16 @@ impl Tpu {
                 banking_stage,
                 cluster_info_vote_listener,
                 broadcast_stage,
-                tpu_quic_t,
-                tpu_forwards_quic_t,
+                // FIREDANCER: QUIC threads are disabled
+                // tpu_quic_t,
+                // tpu_forwards_quic_t,
                 tpu_entry_notifier,
                 staked_nodes_updater_service,
                 tracer_thread_hdl,
             },
-            vec![key_updater, forwards_key_updater],
+            // FIREDANCER: QUIC threads are disabled
+            // vec![key_updater, forwards_key_updater],
+            vec![],
         )
     }
 
@@ -302,8 +319,9 @@ impl Tpu {
             self.cluster_info_vote_listener.join(),
             self.banking_stage.join(),
             self.staked_nodes_updater_service.join(),
-            self.tpu_quic_t.join(),
-            self.tpu_forwards_quic_t.join(),
+            // FIREDANCER: QUIC threads are disabled
+            // self.tpu_quic_t.join(),
+            // self.tpu_forwards_quic_t.join(),
         ];
         let broadcast_result = self.broadcast_stage.join();
         for result in results {
