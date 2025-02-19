@@ -74,12 +74,13 @@ pub struct Tpu {
     banking_stage: BankingStage,
     cluster_info_vote_listener: ClusterInfoVoteListener,
     broadcast_stage: BroadcastStage,
-    tpu_quic_t: thread::JoinHandle<()>,
-    tpu_forwards_quic_t: thread::JoinHandle<()>,
+    // FIREDANCER: QUIC threads are disabled
+    // tpu_quic_t: thread::JoinHandle<()>,
+    // tpu_forwards_quic_t: thread::JoinHandle<()>,
     tpu_entry_notifier: Option<TpuEntryNotifier>,
     staked_nodes_updater_service: StakedNodesUpdaterService,
     tracer_thread_hdl: TracerThread,
-    tpu_vote_quic_t: thread::JoinHandle<()>,
+    // tpu_vote_quic_t: thread::JoinHandle<()>,
 }
 
 impl Tpu {
@@ -168,56 +169,68 @@ impl Tpu {
             gossip_vote_receiver,
         } = banking_tracer_channels;
 
-        // Streamer for Votes:
-        let SpawnServerResult {
-            endpoints: _,
-            thread: tpu_vote_quic_t,
-            key_updater: vote_streamer_key_updater,
-        } = spawn_server_multi(
-            "solQuicTVo",
-            "quic_streamer_tpu_vote",
-            tpu_vote_quic_sockets,
-            keypair,
-            vote_packet_sender.clone(),
-            exit.clone(),
-            staked_nodes.clone(),
-            vote_quic_server_config,
-        )
-        .unwrap();
+        // FIREDANCER: Unused varaibles
+        let _ = keypair;
+        let _ = transactions_quic_sockets;
+        let _ = transactions_forwards_quic_sockets;
+        let _ = tpu_vote_quic_sockets;
+        let _ = tpu_quic_server_config;
+        let _ = tpu_fwd_quic_server_config;
+        let _ = vote_quic_server_config;
+        let _ = spawn_server_multi;
+        let _ = SpawnServerResult::from;
 
-        // Streamer for TPU
-        let SpawnServerResult {
-            endpoints: _,
-            thread: tpu_quic_t,
-            key_updater,
-        } = spawn_server_multi(
-            "solQuicTpu",
-            "quic_streamer_tpu",
-            transactions_quic_sockets,
-            keypair,
-            packet_sender,
-            exit.clone(),
-            staked_nodes.clone(),
-            tpu_quic_server_config,
-        )
-        .unwrap();
+        // FIREDANCER: QUIC servers are disabled
+        // // Streamer for Votes:
+        // let SpawnServerResult {
+        //     endpoints: _,
+        //     thread: tpu_vote_quic_t,
+        //     key_updater: vote_streamer_key_updater,
+        // } = spawn_server_multi(
+        //     "solQuicTVo",
+        //     "quic_streamer_tpu_vote",
+        //     tpu_vote_quic_sockets,
+        //     keypair,
+        //     vote_packet_sender.clone(),
+        //     exit.clone(),
+        //     staked_nodes.clone(),
+        //     vote_quic_server_config,
+        // )
+        // .unwrap();
 
-        // Streamer for TPU forward
-        let SpawnServerResult {
-            endpoints: _,
-            thread: tpu_forwards_quic_t,
-            key_updater: forwards_key_updater,
-        } = spawn_server_multi(
-            "solQuicTpuFwd",
-            "quic_streamer_tpu_forwards",
-            transactions_forwards_quic_sockets,
-            keypair,
-            forwarded_packet_sender,
-            exit.clone(),
-            staked_nodes.clone(),
-            tpu_fwd_quic_server_config,
-        )
-        .unwrap();
+        // // Streamer for TPU
+        // let SpawnServerResult {
+        //     endpoints: _,
+        //     thread: tpu_quic_t,
+        //     key_updater,
+        // } = spawn_server_multi(
+        //     "solQuicTpu",
+        //     "quic_streamer_tpu",
+        //     transactions_quic_sockets,
+        //     keypair,
+        //     packet_sender,
+        //     exit.clone(),
+        //     staked_nodes.clone(),
+        //     tpu_quic_server_config,
+        // )
+        // .unwrap();
+
+        // // Streamer for TPU forward
+        // let SpawnServerResult {
+        //     endpoints: _,
+        //     thread: tpu_forwards_quic_t,
+        //     key_updater: forwards_key_updater,
+        // } = spawn_server_multi(
+        //     "solQuicTpuFwd",
+        //     "quic_streamer_tpu_forwards",
+        //     transactions_forwards_quic_sockets,
+        //     keypair,
+        //     forwarded_packet_sender,
+        //     exit.clone(),
+        //     staked_nodes.clone(),
+        //     tpu_fwd_quic_server_config,
+        // )
+        // .unwrap();
 
         let sigverify_stage = {
             let verifier = TransactionSigVerifier::new(non_vote_sender);
@@ -301,14 +314,17 @@ impl Tpu {
                 banking_stage,
                 cluster_info_vote_listener,
                 broadcast_stage,
-                tpu_quic_t,
-                tpu_forwards_quic_t,
+                // FIREDANCER: QUIC threads are disabled
+                // tpu_quic_t,
+                // tpu_forwards_quic_t,
                 tpu_entry_notifier,
                 staked_nodes_updater_service,
                 tracer_thread_hdl,
-                tpu_vote_quic_t,
+                // tpu_vote_quic_t,
             },
-            vec![key_updater, forwards_key_updater, vote_streamer_key_updater],
+            // FIREDANCER: QUIC threads are disabled
+            // vec![key_updater, forwards_key_updater, vote_streamer_key_updater],
+            vec![],
         )
     }
 
@@ -320,9 +336,10 @@ impl Tpu {
             self.cluster_info_vote_listener.join(),
             self.banking_stage.join(),
             self.staked_nodes_updater_service.join(),
-            self.tpu_quic_t.join(),
-            self.tpu_forwards_quic_t.join(),
-            self.tpu_vote_quic_t.join(),
+            // FIREDANCER: QUIC threads are disabled
+            // self.tpu_quic_t.join(),
+            // self.tpu_forwards_quic_t.join(),
+            // self.tpu_vote_quic_t.join(),
         ];
         let broadcast_result = self.broadcast_stage.join();
         for result in results {
