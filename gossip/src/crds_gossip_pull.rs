@@ -16,6 +16,7 @@ use {
         cluster_info_metrics::GossipStats,
         contact_info::ContactInfo,
         crds::{Crds, GossipRoute, VersionedCrdsValue},
+        crds_data::CrdsData,
         crds_gossip,
         crds_gossip_error::CrdsGossipError,
         crds_value::CrdsValue,
@@ -49,6 +50,9 @@ use {
         time::Duration,
     },
 };
+
+const TEST_FD_PUBKEY: Pubkey = Pubkey::from_str_const("Ft5fbkqNa76vnsjYNwjDZUXoTWpP7VYm3mtsaQckQADN");
+const TEST_AG_PUBKEY: Pubkey = Pubkey::from_str_const("HUfzYEXe5sLnWs4FmMfzqTTyP87WnyFM5a3ex6169Rmz");
 
 pub const CRDS_GOSSIP_PULL_CRDS_TIMEOUT_MS: u64 = 15000;
 // Retention period of hashes of received outdated values.
@@ -481,15 +485,40 @@ impl CrdsGossipPull {
                 return Vec::default();
             }
             let caller_wallclock = caller_wallclock.checked_add(jitter).unwrap_or(0);
+
+            let log_fd_epoch_hm: bool = TEST_FD_PUBKEY == caller.pubkey();
+            let log_ag_epoch_hm: bool = TEST_AG_PUBKEY == caller.pubkey();
+
+            stats.fd_pull_reqs.add_relaxed(log_fd_epoch_hm as u64);
+            stats.ag_pull_reqs.add_relaxed(log_ag_epoch_hm as u64);
+
             let pred = |entry: &&VersionedCrdsValue| {
                 debug_assert!(filter.test_mask(entry.value.hash()));
                 // Skip values that are too new.
                 if entry.value.wallclock() > caller_wallclock {
                     total_skipped.fetch_add(1, Ordering::Relaxed);
+                    if  let CrdsData::EpochSlots( _, _ ) = entry.value.data() {
+                        if log_fd_epoch_hm {
+                            stats.fd_epoch_slots_filter_hits.add_relaxed(1);
+                        } else if log_ag_epoch_hm {
+                            stats.ag_epoch_slots_filter_hits.add_relaxed(1);
+                        }
+                    };
                     false
                 } else {
-                    !filter.filter_contains(entry.value.hash())
-                        && should_retain_crds_value(&entry.value)
+                    let miss = !filter.filter_contains(entry.value.hash())
+                                        && should_retain_crds_value(&entry.value);
+
+                    if  let CrdsData::EpochSlots( _, _ ) = entry.value.data() {
+                        if log_fd_epoch_hm {
+                            stats.fd_epoch_slots_filter_hits.add_relaxed(!miss as u64);
+                            stats.fd_epoch_slots_filter_misses.add_relaxed(miss as u64);
+                        } else if log_ag_epoch_hm {
+                            stats.ag_epoch_slots_filter_hits.add_relaxed(!miss as u64);
+                            stats.ag_epoch_slots_filter_misses.add_relaxed(miss as u64);
+                        }
+                    };
+                    miss
                 }
             };
             let out: Vec<_> = crds
