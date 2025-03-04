@@ -170,6 +170,8 @@ pub struct GossipStats {
     pub(crate) unprocessed_push_crds_counts: CRDSCounter,
     pub(crate) unprocessed_pullresp_crds_counts: CRDSCounter,
     pub(crate) unprocessed_total_crds_counts: CRDSCounter,
+    pub(crate) fd_epoch_slots_filter_hits: Counter,
+    pub(crate) fd_epoch_slots_filter_misses: Counter,
 }
 
 fn print_crds_stats(stats: &CRDSCounter, name: &'static str) {
@@ -781,6 +783,12 @@ pub(crate) fn submit_gossip_stats(
             i64
         ),
         ("all", crds_stats.num_duplicate_crds_values.iter().sum::<usize>(), i64),
+    );
+
+    datapoint_info!(
+        "cluster_info_fd_epoch_slots_filter",
+        ("hits", stats.fd_epoch_slots_filter_hits.clear(), i64),
+        ("misses", stats.fd_epoch_slots_filter_misses.clear(), i64),
     );
 
     if !log::log_enabled!(log::Level::Trace) {
