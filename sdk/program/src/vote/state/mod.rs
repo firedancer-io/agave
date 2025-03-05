@@ -103,7 +103,7 @@ impl Lockout {
 
     // The number of slots for which this vote is locked
     pub fn lockout(&self) -> u64 {
-        (INITIAL_LOCKOUT as u64).pow(self.confirmation_count())
+        (INITIAL_LOCKOUT as u64).wrapping_pow(self.confirmation_count())
     }
 
     // The last slot at which a vote is still locked out. Validators should not
