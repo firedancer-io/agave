@@ -51,7 +51,7 @@ use {
     },
 };
 
-const TEST_FD_PUBKEY: Pubkey = Pubkey::from_str_const("7YcFr1yCMWSVhCJ96BmkfQQGX5F7fnrw4xYqRzhXd3c4");
+const TEST_FD_PUBKEY: Pubkey = Pubkey::from_str_const("7C6gM3s72Y39KdRHf3XjNTNCM3VgnXSaWm6WgKYqcGau");
 
 pub const CRDS_GOSSIP_PULL_CRDS_TIMEOUT_MS: u64 = 15000;
 // Retention period of hashes of received outdated values.
