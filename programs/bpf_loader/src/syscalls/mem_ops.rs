@@ -532,6 +532,13 @@ impl<'a> Iterator for MemoryChunkIterator<'a> {
                     account_index = account_index.saturating_add(1);
                     self.account_index = Some(account_index);
                 } else {
+                    // unaligned accounts that have zero data length do not have data or resize regions
+                    let no_data_or_resize_region = !self.resize_area && (account.original_data_len == 0);
+                    if no_data_or_resize_region {
+                        region_is_account = false;
+                        break;
+                    };
+
                     region_is_account = region.vm_addr == account_addr
                         // unaligned programs do not have a resize area
                         || (self.resize_area && region.vm_addr == resize_addr);
@@ -606,6 +613,13 @@ impl DoubleEndedIterator for MemoryChunkIterator<'_> {
 
                 self.account_index = Some(account_index);
             } else {
+                // unaligned accounts that have zero data length do not have data or resize regions
+                let no_data_or_resize_region = !self.resize_area && (account.original_data_len == 0);
+                if no_data_or_resize_region {
+                    region_is_account = false;
+                    break;
+                };
+
                 region_is_account = region.vm_addr == account_addr
                     // unaligned programs do not have a resize area
                     || (self.resize_area && region.vm_addr == resize_addr);

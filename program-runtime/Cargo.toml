@@ -79,6 +79,7 @@ shuttle-test = [
     "solana-type-overrides/shuttle-test",
     "solana-sbpf/shuttle-test",
 ]
+stub-proc-instr = []
 
 [lints]
 workspace = true
