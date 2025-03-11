@@ -187,6 +187,17 @@ pub struct SerializedAccountMetadata {
     pub vm_owner_addr: u64,
 }
 
+// Used to mock InvokeContext::process_instruction
+#[cfg(feature = "stub-proc-instr")]
+type InstrProcCallback = Box<
+    dyn FnMut(
+        &mut TransactionContext,
+        &[u8], // instruction_data
+        &[InstructionAccount],
+        &[IndexOfAccount] // program_indices
+    ) -> Result<(), InstructionError>
+>;
+
 /// Main pipeline from runtime to program execution.
 pub struct InvokeContext<'a> {
     /// Information about the currently executing transaction.
@@ -206,6 +217,8 @@ pub struct InvokeContext<'a> {
     pub timings: ExecuteDetailsTimings,
     pub syscall_context: Vec<Option<SyscallContext>>,
     traces: Vec<Vec<[u64; 12]>>,
+    #[cfg(feature = "stub-proc-instr")]
+     pub proc_instr_callback: Option<InstrProcCallback>,
 }
 
 impl<'a> InvokeContext<'a> {
@@ -228,6 +241,8 @@ impl<'a> InvokeContext<'a> {
             timings: ExecuteDetailsTimings::default(),
             syscall_context: Vec::new(),
             traces: Vec::new(),
+            #[cfg(feature = "stub-proc-instr")]
+             proc_instr_callback: None,
         }
     }
 
@@ -470,6 +485,23 @@ impl<'a> InvokeContext<'a> {
         timings: &mut ExecuteTimings,
     ) -> Result<(), InstructionError> {
         *compute_units_consumed = 0;
+
+        // [solfuzz-patch] Stub out the processing of the instruction.
+         // Used in fuzzers that indirectly call this function (like the CPI fuzzer) but
+         // don't want to process the instruction.
+         #[cfg(feature = "stub-proc-instr")] {
+            if let Some(proc_instr_callback) = &mut self.proc_instr_callback {
+                return proc_instr_callback(
+                    self.transaction_context,
+                    instruction_data,
+                    instruction_accounts,
+                    program_indices,
+                );
+            } else {
+                return Ok(());
+            }
+        }
+
         self.transaction_context
             .get_next_instruction_context()?
             .configure(program_indices, instruction_accounts, instruction_data);
@@ -551,7 +583,7 @@ impl<'a> InvokeContext<'a> {
             .ok_or(InstructionError::UnsupportedProgramId)?;
         let function = match &entry.program {
             ProgramCacheEntryType::Builtin(program) => program
-                .get_function_registry()
+                .get_function_registry(SBPFVersion::V0)
                 .lookup_by_key(ENTRYPOINT_KEY)
                 .map(|(_name, function)| function),
             _ => None,

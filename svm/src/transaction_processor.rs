@@ -594,16 +594,12 @@ impl<FG: ForkGraph> TransactionBatchProcessor<FG> {
         } = checked_details;
 
         let fee_budget_limits = FeeBudgetLimits::from(compute_budget_limits);
-        let fee_details = if lamports_per_signature == 0 {
-            FeeDetails::default()
-        } else {
-            callbacks.calculate_fee(
-                message,
-                fee_lamports_per_signature,
-                fee_budget_limits.prioritization_fee,
-                account_loader.feature_set.as_ref(),
-            )
-        };
+        callbacks.calculate_fee(
+            message,
+            fee_lamports_per_signature,
+            fee_budget_limits.prioritization_fee,
+            account_loader.feature_set.as_ref(),
+        );
 
         let fee_payer_index = 0;
         validate_fee_payer(
