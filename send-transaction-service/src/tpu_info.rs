@@ -25,7 +25,6 @@ pub trait TpuInfo {
     /// L1, ...]` it will return `[L1, L2, L1]`.
     #[allow(
         dead_code,
-        reason = "This function will be used when tpu-client-next will be added to this module."
     )]
     fn get_not_unique_leader_tpus(&self, max_count: u64, protocol: Protocol) -> Vec<&SocketAddr>;
 
