@@ -176,7 +176,6 @@ impl WorkersCache {
     /// is removed from the cache.
     #[allow(
         dead_code,
-        reason = "This method will be used in the upcoming changes to implement optional backpressure on the sender."
     )]
     pub async fn send_transactions_to_address(
         &mut self,
