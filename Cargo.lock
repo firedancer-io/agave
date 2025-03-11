@@ -524,6 +524,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "arbitrary"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dde20b3d026af13f561bdd0f15edf01fc734f0dafcedbaf42bba506a9517f223"
+dependencies = [
+ "derive_arbitrary",
+]
+
+[[package]]
 name = "arc-swap"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2030,6 +2039,17 @@ name = "derive-where"
 version = "1.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62d671cc41a825ebabc75757b62d3d168c577f9149b2d49ece1dad1f72119d25"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.98",
+]
+
+[[package]]
+name = "derive_arbitrary"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30542c1ad912e0e3d22a1935c290e12e8a29d704a420177a31faad4a601a0800"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8704,7 +8724,7 @@ dependencies = [
  "solana-system-interface",
  "solana-sysvar",
  "solana-sysvar-id",
- "solana-vote-interface",
+ "solana-vote-interface 2.2.1",
  "thiserror 2.0.11",
  "wasm-bindgen",
 ]
@@ -8848,6 +8868,7 @@ version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40db1ff5a0f8aea2c158d78ab5f2cf897848964251d1df42fef78efd3c85b863"
 dependencies = [
+ "arbitrary",
  "borsh 0.10.3",
  "borsh 1.5.5",
  "bs58",
@@ -9780,7 +9801,7 @@ dependencies = [
  "solana-sysvar-id",
  "solana-transaction-context",
  "solana-type-overrides",
- "solana-vote-interface",
+ "solana-vote-interface 2.2.0",
  "solana-vote-program",
  "test-case",
 ]
@@ -10736,8 +10757,38 @@ dependencies = [
  "solana-signer",
  "solana-svm-transaction",
  "solana-transaction",
- "solana-vote-interface",
+ "solana-vote-interface 2.2.0",
  "thiserror 2.0.11",
+]
+
+[[package]]
+name = "solana-vote-interface"
+version = "2.2.0"
+dependencies = [
+ "arbitrary",
+ "bincode",
+ "itertools 0.12.1",
+ "num-derive",
+ "num-traits",
+ "rand 0.8.5",
+ "serde",
+ "serde_derive",
+ "solana-clock",
+ "solana-decode-error",
+ "solana-epoch-schedule",
+ "solana-frozen-abi",
+ "solana-frozen-abi-macro",
+ "solana-hash",
+ "solana-instruction",
+ "solana-logger",
+ "solana-pubkey",
+ "solana-rent",
+ "solana-sdk-ids",
+ "solana-serde-varint",
+ "solana-serialize-utils",
+ "solana-short-vec",
+ "solana-system-interface",
+ "solana-vote-interface 2.2.0",
 ]
 
 [[package]]
@@ -10753,8 +10804,6 @@ dependencies = [
  "serde_derive",
  "solana-clock",
  "solana-decode-error",
- "solana-frozen-abi",
- "solana-frozen-abi-macro",
  "solana-hash",
  "solana-instruction",
  "solana-pubkey",
@@ -10801,7 +10850,7 @@ dependencies = [
  "solana-slot-hashes",
  "solana-transaction",
  "solana-transaction-context",
- "solana-vote-interface",
+ "solana-vote-interface 2.2.0",
  "test-case",
  "thiserror 2.0.11",
 ]

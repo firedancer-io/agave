@@ -594,7 +594,7 @@ impl<FG: ForkGraph> TransactionBatchProcessor<FG> {
         } = checked_details;
 
         let fee_budget_limits = FeeBudgetLimits::from(compute_budget_limits);
-        callbacks.calculate_fee(
+        let fee_details = callbacks.calculate_fee(
             message,
             fee_lamports_per_signature,
             fee_budget_limits.prioritization_fee,

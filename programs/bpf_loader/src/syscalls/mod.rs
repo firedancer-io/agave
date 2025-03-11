@@ -319,7 +319,7 @@ pub(crate) fn morph_into_deployment_environment_v1(
 
     let mut result = BuiltinProgram::new_loader(config);
 
-    for (_key, (name, value)) in from.get_function_registry(SBPFVersion::V0).iter() {
+    for (_key, (name, value)) in from.get_function_registry().iter() {
         // Deployment of programs with sol_alloc_free is disabled. So do not register the syscall.
         if name != *b"sol_alloc_free_" {
             result.register_function(unsafe { std::str::from_utf8_unchecked(name) }, value)?;
