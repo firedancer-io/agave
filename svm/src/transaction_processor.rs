@@ -30,7 +30,7 @@ use {
     solana_feature_set::{
         enable_transaction_loading_failure_fees, remove_accounts_executable_flag_checks, FeatureSet,
     },
-    solana_fee_structure::{FeeBudgetLimits, FeeDetails, FeeStructure},
+    solana_fee_structure::{FeeBudgetLimits, FeeStructure},
     solana_hash::Hash,
     solana_instruction::TRANSACTION_LEVEL_STACK_HEIGHT,
     solana_log_collector::LogCollector,
@@ -590,7 +590,7 @@ impl<FG: ForkGraph> TransactionBatchProcessor<FG> {
 
         let CheckedTransactionDetails {
             nonce,
-            lamports_per_signature,
+            lamports_per_signature: _,
         } = checked_details;
 
         let fee_budget_limits = FeeBudgetLimits::from(compute_budget_limits);
