@@ -73,7 +73,7 @@ fn transaction_error_to_code(err: &TransactionError) -> i32 {
 }
 
 #[no_mangle]
-pub extern "C" fn fd_ext_bank_execute_and_commit_bundle(bank: *const std::ffi::c_void, txns: *const std::ffi::c_void, txn_count: u64, out_transaction_err: *mut i32, out_consumed_exec_cus: *mut u32, out_consumed_acct_data_cus: *mut u32) -> i32 {
+pub extern "C" fn fd_ext_bank_execute_and_commit_bundle(bank: *const std::ffi::c_void, txns: *const std::ffi::c_void, txn_count: u64, out_transaction_err: *mut i32, out_consumed_exec_cus: *mut u32, out_consumed_acct_data_cus: *mut u32, out_ts_load_end: *mut u64, out_ts_exec_end: *mut u64, out_tips: *mut u64) -> i32 {
     use solana_sdk::clock::MAX_PROCESSING_AGE;
     use std::sync::atomic::Ordering;
     use solana_bundle::bundle_execution::load_and_execute_bundle;
@@ -87,6 +87,13 @@ pub extern "C" fn fd_ext_bank_execute_and_commit_bundle(bank: *const std::ffi::c
     let txns = unsafe {
         std::slice::from_raw_parts(txns as *const SanitizedTransaction, txn_count as usize)
     };
+    let out_ts_load_end = unsafe {
+        std::slice::from_raw_parts_mut(out_ts_load_end, txn_count as usize)
+    };
+    let out_ts_exec_end = unsafe {
+        std::slice::from_raw_parts_mut(out_ts_exec_end, txn_count as usize)
+    };
+
     let bank = bank as *const Bank;
     unsafe { Arc::increment_strong_count(bank) };
     let bank = unsafe { Arc::from_raw(bank as *const Bank) };
@@ -124,6 +131,8 @@ pub extern "C" fn fd_ext_bank_execute_and_commit_bundle(bank: *const std::ffi::c
         &default_accounts,
         &default_accounts,
         Some(tip_accounts),
+        out_ts_load_end,
+        out_ts_exec_end,
     );
 
     if let Err(err) = bundle_execution_results.result() {
@@ -144,6 +153,7 @@ pub extern "C" fn fd_ext_bank_execute_and_commit_bundle(bank: *const std::ffi::c
                 for i in 0..txn_count {
                     if i != *index as u64 {
                         unsafe { *out_transaction_err.offset(i as isize) = 39 };
+                        unsafe { *out_tips.offset(i as isize) = 0u64 };
                     }
                 }
             }
@@ -159,7 +169,7 @@ pub extern "C" fn fd_ext_bank_execute_and_commit_bundle(bank: *const std::ffi::c
         .flatten()
         .enumerate()
     {
-        let (consumed_cus, loaded_accounts_data_cost) =
+        let (consumed_cus, loaded_accounts_data_cost, tips) =
             match &result {
                 Ok(Executed(tx)) => {
                     (
@@ -167,7 +177,13 @@ pub extern "C" fn fd_ext_bank_execute_and_commit_bundle(bank: *const std::ffi::c
                         CostModel::calculate_loaded_accounts_data_size_cost(
                             tx.loaded_transaction.loaded_accounts_data_size,
                             &bank.feature_set,
-                        ) as u32
+                        ) as u32,
+                        // jito collects a 5% fee at the end of the epoch
+                        tx.execution_details.tips - tx.execution_details.tips
+                            .checked_mul(5)
+                            .unwrap()
+                            .checked_div(100)
+                            .unwrap(),
                     )
                 },
                 // Transactions must've have succeeded, and not be fee-only,
@@ -175,9 +191,10 @@ pub extern "C" fn fd_ext_bank_execute_and_commit_bundle(bank: *const std::ffi::c
                 _ => unreachable!(),
             };
 
-        unsafe { *out_transaction_err.offset(i as isize) = 0 };
+        unsafe { *out_transaction_err.offset(i.try_into().unwrap()) = 0 };
         unsafe { *out_consumed_exec_cus.offset(i.try_into().unwrap()) = consumed_cus };
         unsafe { *out_consumed_acct_data_cus.offset(i.try_into().unwrap()) = loaded_accounts_data_cost };
+        unsafe { *out_tips.offset(i.try_into().unwrap()) = tips };
     }
 
     let mut execute_and_commit_timings = LeaderExecuteAndCommitTimings::default();
@@ -192,8 +209,8 @@ pub extern "C" fn fd_ext_bank_execute_and_commit_bundle(bank: *const std::ffi::c
 }
 
 #[no_mangle]
-pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_void, txns: *const std::ffi::c_void, txn_count: u64, out_processing_result: *mut i32, out_transaction_err: *mut i32, out_consumed_exec_cus: *mut u32, out_consumed_acct_data_cus: *mut u32 ) -> *mut std::ffi::c_void {
-    use solana_timings::ExecuteTimings;
+pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_void, txns: *const std::ffi::c_void, txn_count: u64, out_processing_result: *mut i32, out_transaction_err: *mut i32, out_consumed_exec_cus: *mut u32, out_consumed_acct_data_cus: *mut u32, out_ts_load_end: *mut u64, out_ts_exec_end: *mut u64 ) -> *mut std::ffi::c_void {
+    use solana_timings::{ExecuteTimingType, ExecuteTimings};
     use solana_runtime::bank::LoadAndExecuteTransactionsOutput;
     use solana_runtime::transaction_batch::OwnedOrBorrowed;
     use solana_sdk::clock::MAX_PROCESSING_AGE;
@@ -203,7 +220,7 @@ pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_vo
     use solana_svm::transaction_processor::ExecutionRecordingConfig;
     use solana_svm::transaction_processor::TransactionProcessingConfig;
     use solana_cost_model::cost_model::CostModel;
-    use std::sync::atomic::Ordering;
+    use std::{sync::atomic::Ordering, ops::Index, time::{SystemTime, UNIX_EPOCH}};
 
     const FD_BANK_TRANSACTION_LANDED: i32 = 1;
     const FD_BANK_TRANSACTION_EXECUTED: i32 = 2;
@@ -211,6 +228,13 @@ pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_vo
     let txns = unsafe {
         std::slice::from_raw_parts(txns as *const SanitizedTransaction, txn_count as usize)
     };
+    let out_ts_load_end = unsafe {
+        std::slice::from_raw_parts_mut(out_ts_load_end, txn_count as usize)
+    };
+    let out_ts_exec_end = unsafe {
+        std::slice::from_raw_parts_mut(out_ts_exec_end, txn_count as usize)
+    };
+
     let bank = bank as *const Bank;
     unsafe { Arc::increment_strong_count(bank) };
     let bank = unsafe { Arc::from_raw( bank as *const Bank ) };
@@ -239,6 +263,9 @@ pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_vo
 
     let mut timings = ExecuteTimings::default();
     let transaction_status_sender_enabled = committer.transaction_status_sender_enabled();
+
+    let start_time_ns = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64;
+
     let output = bank.load_and_execute_transactions(&batch, MAX_PROCESSING_AGE, &mut timings,
         &mut TransactionErrorMetrics::default(),
         TransactionProcessingConfig {
@@ -252,6 +279,17 @@ pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_vo
             tip_accounts: Some(tip_accounts),
         }
     );
+
+    // FIREDANCER: copy accumulated timings to timestamps, used by monitoring tools in FD client 
+    for i in 0..(txn_count as usize) {
+        out_ts_load_end[i] = start_time_ns
+                       + (timings.metrics.index(ExecuteTimingType::CheckUs) * 1000u64)
+                       + (timings.metrics.index(ExecuteTimingType::ValidateFeesUs) * 1000u64)
+                       + (timings.metrics.index(ExecuteTimingType::FilterExecutableUs) * 1000u64)
+                       + (timings.metrics.index(ExecuteTimingType::ProgramCacheUs) * 1000u64)
+                       + (timings.metrics.index(ExecuteTimingType::LoadUs) * 1000u64);
+        out_ts_exec_end[i] = out_ts_load_end[i] + (timings.metrics.index(ExecuteTimingType::ExecuteUs) * 1000u64);
+    }
 
     for i in 0..txn_count {
         let (processing_result, consumed_cus, loaded_accounts_data_cost, transaction_err) =

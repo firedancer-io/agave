@@ -22,12 +22,13 @@ use {
         transaction_processing_result::{ProcessedTransaction, TransactionProcessingResult},
         transaction_processor::{ExecutionRecordingConfig, TransactionProcessingConfig},
     },
-    solana_timings::ExecuteTimings,
+    solana_timings::{ExecuteTimingType, ExecuteTimings},
     solana_transaction_status::{token_balances::TransactionTokenBalances, PreBalanceInfo},
     std::{
         cmp::{max, min},
         result,
-        // time::{Duration, Instant},
+        time::{SystemTime, UNIX_EPOCH},
+        ops::Index,
     },
     thiserror::Error,
 };
@@ -242,6 +243,8 @@ pub fn load_and_execute_bundle<'a, 'b>(
     pre_execution_accounts: &[Option<Vec<Pubkey>>],
     post_execution_accounts: &[Option<Vec<Pubkey>>],
     tip_accounts: Option<&'b std::collections::HashSet<Pubkey>>,
+    ts_load_end: &mut [u64],
+    ts_exec_end: &mut [u64],
 ) -> LoadAndExecuteBundleOutput<'a> {
     if pre_execution_accounts.len() != post_execution_accounts.len()
         || post_execution_accounts.len() != txns.len()
@@ -371,6 +374,8 @@ pub fn load_and_execute_bundle<'a, 'b>(
             get_account_transactions(bank, account_overrides, accounts_requested, &batch);
         saturating_add_assign!(metrics.collect_pre_post_accounts_us, m.end_as_us());
 
+        let start_time_ns = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as u64;
+
         let (load_and_execute_transactions_output, load_execute_us) = measure_us!(bank
             .load_and_execute_transactions(
                 &batch,
@@ -395,6 +400,17 @@ pub fn load_and_execute_bundle<'a, 'b>(
             load_and_execute_transactions_output.processing_results
         );
         saturating_add_assign!(metrics.load_execute_us, load_execute_us);
+
+        // FIREDANCER: copy accumulated timings to timestamps, used by monitoring tools in FD client 
+        for i in chunk_start..chunk_end {
+            ts_load_end[i] = start_time_ns
+                           + (metrics.execute_timings.metrics.index(ExecuteTimingType::CheckUs) * 1000u64)
+                           + (metrics.execute_timings.metrics.index(ExecuteTimingType::ValidateFeesUs) * 1000u64)
+                           + (metrics.execute_timings.metrics.index(ExecuteTimingType::FilterExecutableUs) * 1000u64)
+                           + (metrics.execute_timings.metrics.index(ExecuteTimingType::ProgramCacheUs) * 1000u64)
+                           + (metrics.execute_timings.metrics.index(ExecuteTimingType::LoadUs) * 1000u64);
+            ts_exec_end[i] = ts_load_end[i] + (metrics.execute_timings.metrics.index(ExecuteTimingType::ExecuteUs) * 1000u64);
+        }
 
         // All transactions within a bundle are expected to be executable + not fail
         // If there's any transactions that executed and failed or didn't execute due to
