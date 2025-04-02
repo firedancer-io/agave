@@ -23,7 +23,7 @@ extern "C" {
     fn fd_ext_poh_acquire_leader_bank() -> *const c_void;
     fn fd_ext_poh_reset_slot() -> u64;
     fn fd_ext_poh_reached_leader_slot(out_leader_slot: *mut u64, out_reset_slot: *mut u64) -> i32;
-    fn fd_ext_poh_begin_leader(bank: *const c_void, slot: u64, epoch: u64, hashcnt_per_tick: u64);
+    fn fd_ext_poh_begin_leader(bank: *const c_void, slot: u64, epoch: u64, hashcnt_per_tick: u64, cus_block_limit: u64, cus_vote_cost_limit: u64, cus_account_cost_limit: u64);
     fn fd_ext_poh_reset(reset_bank_slot: u64, reset_blockhash: *const u8, hashcnt_per_tick: u64);
     fn fd_ext_poh_get_leader_after_n_slots(n: u64, out_pubkey: *mut u8) -> i32;
     fn fd_ext_poh_update_active_descendant(max_active_descendant: u64);
@@ -178,8 +178,11 @@ impl PohRecorder {
         let slot = bank.slot();
         let epoch = bank.epoch();
         let hashes_per_tick = bank.hashes_per_tick().unwrap_or(1);
+        let cus_block_limit = bank.read_cost_tracker().unwrap().get_block_limit();
+        let cus_vote_cost_limit = bank.read_cost_tracker().unwrap().get_vote_cost_limit();
+        let cus_account_cost_limit = bank.read_cost_tracker().unwrap().get_account_cost_limit();
         let leader_bank: *const Bank = Arc::into_raw( bank );
-        unsafe { fd_ext_poh_begin_leader( leader_bank as *const c_void, slot, epoch, hashes_per_tick ) };
+        unsafe { fd_ext_poh_begin_leader( leader_bank as *const c_void, slot, epoch, hashes_per_tick, cus_block_limit, cus_vote_cost_limit, cus_account_cost_limit ) };
     }
 
     pub fn reset(&mut self, reset_bank: Arc<Bank>, _next_leader_slot: Option<(Slot, Slot)>) {

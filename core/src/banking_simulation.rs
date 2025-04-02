@@ -76,7 +76,7 @@ extern "C" fn fd_ext_poh_get_leader_after_n_slots( _n: u64, _out_pubkey: *mut u8
 extern "C" fn fd_ext_poh_acquire_leader_bank() -> *const c_void { ptr::null() }
 
 #[no_mangle]
-extern "C" fn fd_ext_poh_begin_leader( _bank: *const c_void, _slot: u64, _epoch: u64, _hashcnt_per_tick: u64 ) {}
+extern "C" fn fd_ext_poh_begin_leader( _bank: *const c_void, _slot: u64, _epoch: u64, _hashcnt_per_tick: u64, cus_block_limit: u64, cus_vote_cost_limit: u64, cus_account_cost_limit: u64 ) {}
 
 #[no_mangle]
 extern "C" fn fd_ext_poh_reset() -> u64 { 0 }

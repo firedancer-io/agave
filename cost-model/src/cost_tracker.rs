@@ -146,6 +146,14 @@ impl CostTracker {
         self.block_cost_limit
     }
 
+    pub fn get_vote_cost_limit(&self) -> u64 {
+        self.vote_cost_limit
+    }
+
+    pub fn get_account_cost_limit(&self) -> u64 {
+        self.account_cost_limit
+    }
+
     /// allows to adjust limits initiated during construction
     pub fn set_limits(
         &mut self,
