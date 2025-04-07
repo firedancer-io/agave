@@ -1103,6 +1103,37 @@ fn cpi_common<S: SyscallInvokeSigned>(
     let instruction = S::translate_instruction(instruction_addr, memory_mapping, invoke_context)?;
     let transaction_context = &invoke_context.transaction_context;
     let instruction_context = transaction_context.get_current_instruction_context()?;
+
+    println!("\n\nBEFORE CPI:\n\n");
+    let mut regions = memory_mapping.get_regions().to_vec();
+    regions.sort_by(|a, b| a.vm_addr.cmp(&b.vm_addr));
+    for region in regions.iter() {
+        if region.vm_addr < 0x400000000 || region.vm_addr >= 0x500000000 {
+            continue;
+        }
+        let haddr = region.host_addr.get();
+        if haddr != 0 {
+            // Safety: We assume the memory at haddr is valid and accessible for reading.
+            let memory_slice = unsafe { std::slice::from_raw_parts(haddr as *const u8, region.len as usize) };
+            println!("{:?}", memory_slice);
+        }
+        println!("haddr start, end: {:x} {:x}", haddr, haddr + region.len as u64);
+        println!(
+            "vm addr start, end: {:x} {:x}",
+            region.vm_addr, region.vm_addr_end
+        );
+        println!("Region writable? {}", region.state.get() != MemoryState::Readable);
+        for (i, account) in invoke_context.get_syscall_context().unwrap().accounts_metadata.iter().enumerate() {
+            if account.vm_data_addr == region.vm_addr {
+                println!("Pubkey: {}", instruction_context.try_borrow_instruction_account(transaction_context, i as u16).unwrap().get_key());
+                break;
+            }
+        }
+    }
+    println!();
+
+    println!("---");
+
     let caller_program_id = instruction_context.get_last_program_key(transaction_context)?;
     let signers = S::translate_signers(
         caller_program_id,
@@ -1138,10 +1169,50 @@ fn cpi_common<S: SyscallInvokeSigned>(
         &mut compute_units_consumed,
         &mut ExecuteTimings::default(),
     )?;
-
     // re-bind to please the borrow checker
     let transaction_context = &invoke_context.transaction_context;
     let instruction_context = transaction_context.get_current_instruction_context()?;
+
+    println!("\n\nBETWEEN CPI:\n\n");
+    let mut regions = memory_mapping.get_regions().to_vec();
+    regions.sort_by(|a, b| a.vm_addr.cmp(&b.vm_addr));
+    let goat = false;
+    for region in regions.iter() {
+        if region.vm_addr < 0x400000000 || region.vm_addr >= 0x500000000 {
+            continue;
+        }
+        let haddr = region.host_addr.get();
+        if haddr != 0 {
+            // Safety: We assume the memory at haddr is valid and accessible for reading.
+            let memory_slice = unsafe { std::slice::from_raw_parts(haddr as *const u8, region.len as usize) };
+            println!("{:?}", memory_slice);
+
+            if memory_slice.len() > 64 && memory_slice[64] == 200 {
+                println!("WE GOT EM");
+            }
+        }
+        println!("haddr start, end: {:x} {:x}", haddr, haddr + region.len as u64);
+
+        println!(
+            "vm addr start, end: {:x} {:x}",
+            region.vm_addr, region.vm_addr_end
+        );
+        // println!(
+        //     "haddr start, end: {:x} {:x}",
+        //     haddr, haddr + region.vm_addr_end - region.vm_addr
+        // );
+        println!("Region writable? {}", region.state.get() != MemoryState::Readable);
+
+        for (i, account) in invoke_context.get_syscall_context().unwrap().accounts_metadata.iter().enumerate() {
+            if account.vm_data_addr == region.vm_addr {
+                println!("Pubkey: {}", instruction_context.try_borrow_instruction_account(transaction_context, i as u16).unwrap().get_key());
+                break;
+            }
+        }
+    }
+    println!();
+
+    println!("---");
 
     // CPI exit.
     //
@@ -1156,9 +1227,14 @@ fn cpi_common<S: SyscallInvokeSigned>(
         // other accounts, but since we did have bugs around this in the past,
         // it's better to be safe than sorry.
         for (index_in_caller, caller_account) in accounts.iter() {
+            // println!("Index in caller: {}, Key: {:?}", index_in_caller, instruction_context.try_borrow_instruction_account(transaction_context, *index_in_caller).map(|account| account.get_key().clone()));
             if let Some(caller_account) = caller_account {
+                // println!("Index in caller: {}", index_in_caller);
                 let callee_account = instruction_context
                     .try_borrow_instruction_account(transaction_context, *index_in_caller)?;
+                // println!("Callee account pubkey: {:?}", callee_account.get_key());
+                println!("We're updating perms for {} now", callee_account.get_key());
+
                 update_caller_account_perms(
                     memory_mapping,
                     caller_account,
@@ -1171,8 +1247,15 @@ fn cpi_common<S: SyscallInvokeSigned>(
 
     for (index_in_caller, caller_account) in accounts.iter_mut() {
         if let Some(caller_account) = caller_account {
+            // println!("Index in caller: {}", index_in_caller);
             let mut callee_account = instruction_context
                 .try_borrow_instruction_account(transaction_context, *index_in_caller)?;
+            println!("We're updating {} now", callee_account.get_key());
+            if *index_in_caller == 5 {
+                unsafe {
+                    // std::arch::asm!("int $3");
+                }
+            }
             update_caller_account(
                 invoke_context,
                 memory_mapping,
@@ -1183,6 +1266,37 @@ fn cpi_common<S: SyscallInvokeSigned>(
             )?;
         }
     }
+    println!("We're updating---\n");
+
+    println!("\n\nAFTER CPI:\n\n");
+    let mut regions = memory_mapping.get_regions().to_vec();
+    regions.sort_by(|a, b| a.vm_addr.cmp(&b.vm_addr));
+    for region in regions.iter() {
+        if region.vm_addr < 0x400000000 || region.vm_addr >= 0x500000000 {
+            continue;
+        }
+        let haddr = region.host_addr.get();
+        if haddr != 0 {
+            // Safety: We assume the memory at haddr is valid and accessible for reading.
+            let memory_slice = unsafe { std::slice::from_raw_parts(haddr as *const u8, region.len as usize) };
+            println!("{:?}", memory_slice);
+        }
+        println!("haddr start, end: {:x} {:x}", haddr, haddr + region.len as u64);
+        println!(
+            "vm addr start, end: {:x} {:x}",
+            region.vm_addr, region.vm_addr_end
+        );
+        println!("Region writable? {}", region.state.get() != MemoryState::Readable);
+        for (i, account) in invoke_context.get_syscall_context().unwrap().accounts_metadata.iter().enumerate() {
+            if account.vm_data_addr == region.vm_addr {
+                println!("Pubkey: {}", instruction_context.try_borrow_instruction_account(transaction_context, i as u16).unwrap().get_key());
+                break;
+            }
+        }
+    }
+    println!();
+
+    println!("---");
 
     invoke_context.execute_time = Some(Measure::start("execute"));
     Ok(SUCCESS)
@@ -1291,6 +1405,7 @@ fn update_caller_account_perms(
         region
             .state
             .set(account_data_region_memory_state(callee_account));
+        println!("Region is writable? {}", region.state.get() != MemoryState::Readable);
     }
     let realloc_region = account_realloc_region(
         memory_mapping,
@@ -1306,6 +1421,7 @@ fn update_caller_account_perms(
             } else {
                 MemoryState::Readable
             });
+        println!("Realloc region is writable? {}", region.state.get() != MemoryState::Readable);
     }
 
     Ok(())
@@ -1362,6 +1478,7 @@ fn update_caller_account(
             // AccountSharedData API directly (deprecated).
             let callee_ptr = callee_account.get_data().as_ptr() as u64;
             if region.host_addr.get() != callee_ptr {
+                println!("Changing region haddr from {:x} to {:x} for pubkey {}", region.host_addr.get(), callee_ptr, callee_account.get_key());
                 region.host_addr.set(callee_ptr);
                 zero_all_mapped_spare_capacity = true;
             }
@@ -1465,6 +1582,12 @@ fn update_caller_account(
         }
         // this is the len field in the AccountInfo::data slice
         *caller_account.ref_to_len_in_vm.get_mut()? = post_len as u64;
+
+        if caller_account.vm_data_addr == 17179921464 {
+            unsafe {
+                // std::arch::asm!("int $3");
+            }
+        }
 
         // this is the len field in the serialized parameters
         let serialized_len_ptr = translate_type_mut::<u64>(

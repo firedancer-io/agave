@@ -6,6 +6,7 @@ pub mod syscalls;
 
 #[cfg(feature = "svm-internal")]
 use qualifier_attr::qualifiers;
+use solana_sbpf::memory_region::MemoryState;
 use {
     agave_feature_set::{
         bpf_account_data_direct_mapping, enable_bpf_loader_set_authority_checked_ix,
@@ -1570,7 +1571,8 @@ fn execute<'a, 'b: 'a>(
     #[cfg(any(target_os = "windows", not(target_arch = "x86_64")))]
     let use_jit = false;
     #[cfg(all(not(target_os = "windows"), target_arch = "x86_64"))]
-    let use_jit = executable.get_compiled_program().is_some();
+    // let use_jit = executable.get_compiled_program().is_some();
+    let use_jit = false;
     let direct_mapping = invoke_context
         .get_feature_set()
         .is_active(&bpf_account_data_direct_mapping::id());
@@ -1582,6 +1584,38 @@ fn execute<'a, 'b: 'a>(
         !direct_mapping,
     )?;
     serialize_time.stop();
+
+    println!("\n\nIN BPF LOADER\n\n");
+    for region in regions.iter() {
+        let haddr = region.host_addr.get();
+        if haddr != 0 {
+            // Safety: We assume the memory at haddr is valid and accessible for reading.
+            let memory_slice = unsafe { std::slice::from_raw_parts(haddr as *const u8, region.len as usize) };
+            println!("{:?}", memory_slice);
+        }
+        println!("haddr start, end: {:x} {:x}", haddr, haddr + region.len as u64);
+
+        println!(
+            "vm addr start, end: {:x} {:x}",
+            region.vm_addr, region.vm_addr_end
+        );
+        println!("Region writable? {}", region.state.get() != MemoryState::Readable);
+        if region.vm_addr == 0x400000060 {
+            unsafe {
+                // std::arch::asm!("int $3");
+            }
+        }
+    }
+    println!();
+
+    println!("Account metadatas");
+    for (i, metadata) in accounts_metadata.iter().enumerate() {
+        println!("Pubkey: {}", instruction_context.try_borrow_instruction_account(transaction_context, i as u16).unwrap().get_key());
+        println!(
+            "vm_data_addr: {:x}, original_data_len: {}",
+            metadata.vm_data_addr, metadata.original_data_len
+        );
+    }
 
     // save the account addresses so in case we hit an AccessViolation error we
     // can map to a more specific error

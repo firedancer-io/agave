@@ -15,7 +15,7 @@ use {
     solana_transaction_context::{
         BorrowedAccount, IndexOfAccount, InstructionContext, TransactionContext,
     },
-    std::mem::{self, size_of},
+    std::{mem::{self, size_of}, str::FromStr},
 };
 
 /// Maximum number of instruction accounts that can be serialized into the
@@ -130,6 +130,14 @@ impl Serializer {
         &mut self,
         account: &mut BorrowedAccount<'_>,
     ) -> Result<(), InstructionError> {
+        // if self.vaddr == 0x4000329c8 {
+        if self.vaddr == 0x400000060 && account.get_key() == &Pubkey::from_str("DwNBr3gVkkMaxwAFziAUSDFkyHat4bQ8QsDwKV9xvc2L").unwrap() {
+            // println!("Key: {}", account.get_key());
+            unsafe {
+                // std::arch::asm!("int $3");
+            }
+        }
+        println!("Pubkey and host addr: {} {:?}, empty? : {}, MOO?: {}", account.get_key(), account.get_data().as_ptr(), account.get_data().is_empty(), account.can_data_be_changed().is_ok() && account.is_shared());
         if !account.get_data().is_empty() {
             let region = match account_data_region_memory_state(account) {
                 MemoryState::Readable => MemoryRegion::new_readonly(account.get_data(), self.vaddr),
