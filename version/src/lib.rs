@@ -53,6 +53,13 @@ fn compute_commit(sha1: Option<&'static str>) -> Option<u32> {
     u32::from_str_radix(sha1?.get(..8)?, /*radix:*/ 16).ok()
 }
 
+extern "C" {
+    pub(crate) static fdctl_major_version: u64;
+    pub(crate) static fdctl_minor_version: u64;
+    pub(crate) static fdctl_patch_version: u64;
+    pub(crate) static fdctl_commit_ref: u32;
+}
+
 impl Default for Version {
     fn default() -> Self {
         let feature_set =
@@ -132,13 +139,6 @@ macro_rules! version {
     () => {
         &*format!("{:?}", $crate::Version::default())
     };
-}
-
-extern "C" {
-    pub(crate) static fdctl_major_version: u64;
-    pub(crate) static fdctl_minor_version: u64;
-    pub(crate) static fdctl_patch_version: u64;
-    pub(crate) static fdctl_commit_ref: u32;
 }
 
 #[cfg(test)]

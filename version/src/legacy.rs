@@ -27,16 +27,23 @@ pub struct LegacyVersion2 {
     pub feature_set: u32,    // first 4 bytes of the FeatureSet identifier
 }
 
+extern "C" {
+    pub(crate) static fdctl_major_version: u64;
+    pub(crate) static fdctl_minor_version: u64;
+    pub(crate) static fdctl_patch_version: u64;
+    pub(crate) static fdctl_commit_ref: u32;
+}
+
 impl Default for LegacyVersion2 {
     fn default() -> Self {
         let feature_set =
             u32::from_le_bytes(solana_feature_set::ID.as_ref()[..4].try_into().unwrap());
         let _ = compute_commit(None);
         Self {
-            major: unsafe { crate::fdctl_major_version as u16 },
-            minor: unsafe { crate::fdctl_minor_version as u16 },
-            patch: unsafe { crate::fdctl_patch_version as u16 },
-            commit: Some(unsafe { crate::fdctl_commit_ref }),
+            major: unsafe { fdctl_major_version as u16 },
+            minor: unsafe { fdctl_minor_version as u16 },
+            patch: unsafe { fdctl_patch_version as u16 },
+            commit: Some(unsafe { fdctl_commit_ref }),
             feature_set,
         }
     }
