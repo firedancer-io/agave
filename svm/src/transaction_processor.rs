@@ -30,7 +30,7 @@ use {
     solana_clock::{Epoch, Slot},
     solana_compute_budget::compute_budget::ComputeBudget,
     solana_compute_budget_instruction::instructions_processor::process_compute_budget_instructions,
-    solana_fee_structure::{FeeBudgetLimits, FeeDetails, FeeStructure},
+    solana_fee_structure::{FeeBudgetLimits, FeeStructure},
     solana_hash::Hash,
     solana_instruction::TRANSACTION_LEVEL_STACK_HEIGHT,
     solana_log_collector::LogCollector,
@@ -590,20 +590,16 @@ impl<FG: ForkGraph> TransactionBatchProcessor<FG> {
 
         let CheckedTransactionDetails {
             nonce,
-            lamports_per_signature,
+            lamports_per_signature: _,
         } = checked_details;
 
         let fee_budget_limits = FeeBudgetLimits::from(compute_budget_limits);
-        let fee_details = if lamports_per_signature == 0 {
-            FeeDetails::default()
-        } else {
-            callbacks.calculate_fee(
-                message,
-                fee_lamports_per_signature,
-                fee_budget_limits.prioritization_fee,
-                account_loader.feature_set.as_ref(),
-            )
-        };
+        let fee_details = callbacks.calculate_fee(
+            message,
+            fee_lamports_per_signature,
+            fee_budget_limits.prioritization_fee,
+            account_loader.feature_set.as_ref(),
+        );
 
         let fee_payer_index = 0;
         validate_fee_payer(

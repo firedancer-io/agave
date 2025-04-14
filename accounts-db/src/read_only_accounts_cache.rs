@@ -295,7 +295,7 @@ impl ReadOnlyAccountsCache {
 
                     // We shouldn't need to evict often, so sleep to reduce the frequency.
                     // 100 ms is already four times per slot, which should be plenty.
-                    thread::sleep(Duration::from_millis(100));
+                    thread::sleep(Duration::from_millis(1));
                     stats
                         .evictor_wakeup_count_all
                         .fetch_add(1, Ordering::Relaxed);
