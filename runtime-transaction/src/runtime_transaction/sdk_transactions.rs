@@ -48,12 +48,12 @@ impl RuntimeTransaction<SanitizedVersionedTransaction> {
             precompile_signature_details.num_ed25519_instruction_signatures,
             precompile_signature_details.num_secp256r1_instruction_signatures,
         );
-        let compute_budget_instruction_details = ComputeBudgetInstructionDetails::try_from(
-            sanitized_versioned_tx
-                .get_message()
-                .program_instructions_iter()
-                .map(|(program_id, ix)| (program_id, SVMInstruction::from(ix))),
-        )?;
+        // let compute_budget_instruction_details = ComputeBudgetInstructionDetails::try_from(
+        //     sanitized_versioned_tx
+        //         .get_message()
+        //         .program_instructions_iter()
+        //         .map(|(program_id, ix)| (program_id, SVMInstruction::from(ix))),
+        // )?;
 
         Ok(Self {
             transaction: sanitized_versioned_tx,
@@ -61,7 +61,7 @@ impl RuntimeTransaction<SanitizedVersionedTransaction> {
                 message_hash,
                 is_simple_vote_transaction: is_simple_vote_tx,
                 signature_details,
-                compute_budget_instruction_details,
+                compute_budget_instruction_details: ComputeBudgetInstructionDetails::default(),
             },
         })
     }
