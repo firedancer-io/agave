@@ -1830,8 +1830,7 @@ impl Bank {
             // When the feature gate is enabled, the snapshot *must* contain an accounts lt hash.
             assert!(
                 !bank
-                    .feature_set
-                    .is_active(&feature_set::accounts_lt_hash::id()),
+                    .is_accounts_lt_hash_enabled(),
                 "snapshot must have an accounts lt hash if the feature is enabled",
             );
             if bank.is_accounts_lt_hash_enabled() {
@@ -2608,6 +2607,7 @@ impl Bank {
             // freeze is a one-way trip, idempotent
             self.freeze_started.store(true, Relaxed);
             if self.is_accounts_lt_hash_enabled() {
+                warn!("Updating accounts lt hash for slot {}", self.slot());
                 // updating the accounts lt hash must happen *outside* of hash_internal_state() so
                 // that rehash() can be called and *not* modify self.accounts_lt_hash.
                 self.update_accounts_lt_hash();
@@ -2639,6 +2639,8 @@ impl Bank {
                     );
                     info!("Verifying the accounts lt hash for slot {slot}... Done successfully in {duration:?}");
                 }
+            } else {
+                warn!("Skipping accounts lt hash update for slot {}", self.slot());
             }
             *hash = self.hash_internal_state();
             self.rc.accounts.accounts_db.mark_slot_frozen(self.slot());
@@ -5288,9 +5290,7 @@ impl Bank {
             ])
         };
 
-        let accounts_hash_info = if self
-            .feature_set
-            .is_active(&feature_set::accounts_lt_hash::id())
+        let accounts_hash_info = if self.is_accounts_lt_hash_enabled()
         {
             let accounts_lt_hash = &*self.accounts_lt_hash.lock().unwrap();
             let lt_hash_bytes = bytemuck::must_cast_slice(&accounts_lt_hash.0 .0);
@@ -6449,8 +6449,11 @@ impl Bank {
             Caller::NewFromParent => true,
             Caller::WarpFromParent => false,
         };
-        let (feature_set, new_feature_activations) =
+        let (mut feature_set, new_feature_activations) =
             self.compute_active_feature_set(allow_new_activations);
+        // feature_set.activate(&solana_sdk::feature_set::accounts_lt_hash::id(), 1);
+        feature_set.activate(&solana_sdk::feature_set::skip_rent_rewrites::id(), 1);
+        feature_set.activate(&solana_sdk::feature_set::disable_rent_fees_collection::id(), 1);
         self.feature_set = Arc::new(feature_set);
 
         // Update activation slot of features in `new_feature_activations`
@@ -6517,7 +6520,7 @@ impl Bank {
             self.apply_updated_hashes_per_tick(UPDATED_HASHES_PER_TICK6);
         }
 
-        if new_feature_activations.contains(&feature_set::accounts_lt_hash::id()) {
+        if self.is_accounts_lt_hash_enabled() && self.accounts_lt_hash.lock().unwrap().0 == LtHash::identity() {
             // Activating the accounts lt hash feature means we need to have an accounts lt hash
             // value at the end of this if-block.  If the cli arg has been used, that means we
             // already have an accounts lt hash and do not need to recalculate it.

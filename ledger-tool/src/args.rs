@@ -128,16 +128,13 @@ pub fn accounts_db_args<'a, 'b>() -> Box<[Arg<'a, 'b>]> {
             .help("Access account storages using this method"),
         Arg::with_name("accounts_db_experimental_accumulator_hash")
             .long("accounts-db-experimental-accumulator-hash")
-            .help("Enables the experimental accumulator hash")
-            .hidden(hidden_unless_forced()),
+            .help("Enables the experimental accumulator hash"),
         Arg::with_name("accounts_db_verify_experimental_accumulator_hash")
             .long("accounts-db-verify-experimental-accumulator-hash")
-            .help("Verifies the experimental accumulator hash")
-            .hidden(hidden_unless_forced()),
+            .help("Verifies the experimental accumulator hash"),
         Arg::with_name("accounts_db_snapshots_use_experimental_accumulator_hash")
             .long("accounts-db-snapshots-use-experimental-accumulator-hash")
-            .help("Snapshots use the experimental accumulator hash")
-            .hidden(hidden_unless_forced()),
+            .help("Snapshots use the experimental accumulator hash"),
         Arg::with_name("accounts_db_hash_threads")
             .long("accounts-db-hash-threads")
             .value_name("NUM_THREADS")
