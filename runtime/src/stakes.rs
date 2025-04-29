@@ -160,19 +160,19 @@ impl StakesCache {
 #[derive(Default, Clone, PartialEq, Debug, Deserialize, Serialize)]
 pub struct Stakes<T: Clone> {
     /// vote accounts
-    vote_accounts: VoteAccounts,
+    pub vote_accounts: VoteAccounts,
 
     /// stake_delegations
-    stake_delegations: ImHashMap<Pubkey, T>,
+    pub stake_delegations: ImHashMap<Pubkey, T>,
 
     /// unused
-    unused: u64,
+    pub unused: u64,
 
     /// current epoch, used to calculate current stake
-    epoch: Epoch,
+    pub epoch: Epoch,
 
     /// history of staking levels
-    stake_history: StakeHistory,
+    pub stake_history: StakeHistory,
 }
 
 // For backward compatibility, we can only serialize and deserialize
@@ -206,7 +206,7 @@ impl Stakes<StakeAccount> {
     /// full account state for respective stake pubkeys. get_account function
     /// should return the account at the respective slot where stakes where
     /// cached.
-    pub(crate) fn new<F>(stakes: &Stakes<Delegation>, get_account: F) -> Result<Self, Error>
+    pub fn new<F>(stakes: &Stakes<Delegation>, get_account: F) -> Result<Self, Error>
     where
         F: Fn(&Pubkey) -> Option<AccountSharedData> + Sync,
     {

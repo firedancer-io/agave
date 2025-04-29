@@ -144,7 +144,7 @@ fn get_first_error<T, Tx: SVMTransaction>(
         .unwrap_or(Ok(()))
 }
 
-fn create_thread_pool(num_threads: usize) -> ThreadPool {
+pub fn create_thread_pool(num_threads: usize) -> ThreadPool {
     rayon::ThreadPoolBuilder::new()
         .num_threads(num_threads)
         .thread_name(|i| format!("solReplayTx{i:02}"))
@@ -1606,7 +1606,7 @@ pub fn confirm_slot(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn confirm_slot_entries(
+pub fn confirm_slot_entries(
     bank: &BankWithScheduler,
     replay_tx_thread_pool: &ThreadPool,
     slot_entries_load_result: (Vec<Entry>, u64, bool),
