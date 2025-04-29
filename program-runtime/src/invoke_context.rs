@@ -194,8 +194,8 @@ type InstrProcCallback = Box<
         &mut TransactionContext,
         &[u8], // instruction_data
         &[InstructionAccount],
-        &[IndexOfAccount] // program_indices
-    ) -> Result<(), InstructionError>
+        &[IndexOfAccount], // program_indices
+    ) -> Result<(), InstructionError>,
 >;
 
 /// Main pipeline from runtime to program execution.
@@ -218,7 +218,7 @@ pub struct InvokeContext<'a> {
     pub syscall_context: Vec<Option<SyscallContext>>,
     traces: Vec<Vec<[u64; 12]>>,
     #[cfg(feature = "stub-proc-instr")]
-     pub proc_instr_callback: Option<InstrProcCallback>,
+    pub proc_instr_callback: Option<InstrProcCallback>,
 }
 
 impl<'a> InvokeContext<'a> {
@@ -242,7 +242,7 @@ impl<'a> InvokeContext<'a> {
             syscall_context: Vec::new(),
             traces: Vec::new(),
             #[cfg(feature = "stub-proc-instr")]
-             proc_instr_callback: None,
+            proc_instr_callback: None,
         }
     }
 
@@ -487,9 +487,10 @@ impl<'a> InvokeContext<'a> {
         *compute_units_consumed = 0;
 
         // [solfuzz-patch] Stub out the processing of the instruction.
-         // Used in fuzzers that indirectly call this function (like the CPI fuzzer) but
-         // don't want to process the instruction.
-         #[cfg(feature = "stub-proc-instr")] {
+        // Used in fuzzers that indirectly call this function (like the CPI fuzzer) but
+        // don't want to process the instruction.
+        #[cfg(feature = "stub-proc-instr")]
+        {
             if let Some(proc_instr_callback) = &mut self.proc_instr_callback {
                 return proc_instr_callback(
                     self.transaction_context,
