@@ -315,7 +315,7 @@ pub struct BankRc {
 }
 
 impl BankRc {
-    pub(crate) fn new(accounts: Accounts) -> Self {
+    pub fn new(accounts: Accounts) -> Self {
         Self {
             accounts: Arc::new(accounts),
             parent: RwLock::new(None),
@@ -428,41 +428,41 @@ impl TransactionLogCollector {
 #[derive(Clone, Debug, Default)]
 #[cfg_attr(feature = "dev-context-only-utils", derive(PartialEq))]
 pub struct BankFieldsToDeserialize {
-    pub(crate) blockhash_queue: BlockhashQueue,
-    pub(crate) ancestors: AncestorsForSerialization,
-    pub(crate) hash: Hash,
-    pub(crate) parent_hash: Hash,
-    pub(crate) parent_slot: Slot,
-    pub(crate) hard_forks: HardForks,
-    pub(crate) transaction_count: u64,
-    pub(crate) tick_height: u64,
-    pub(crate) signature_count: u64,
-    pub(crate) capitalization: u64,
-    pub(crate) max_tick_height: u64,
-    pub(crate) hashes_per_tick: Option<u64>,
-    pub(crate) ticks_per_slot: u64,
-    pub(crate) ns_per_slot: u128,
-    pub(crate) genesis_creation_time: UnixTimestamp,
-    pub(crate) slots_per_year: f64,
-    pub(crate) slot: Slot,
-    pub(crate) epoch: Epoch,
-    pub(crate) block_height: u64,
-    pub(crate) collector_id: Pubkey,
-    pub(crate) collector_fees: u64,
-    pub(crate) fee_rate_governor: FeeRateGovernor,
-    pub(crate) collected_rent: u64,
-    pub(crate) rent_collector: RentCollector,
-    pub(crate) epoch_schedule: EpochSchedule,
-    pub(crate) inflation: Inflation,
-    pub(crate) stakes: Stakes<Delegation>,
-    pub(crate) epoch_stakes: HashMap<Epoch, EpochStakes>,
-    pub(crate) is_delta: bool,
-    pub(crate) accounts_data_len: u64,
-    pub(crate) incremental_snapshot_persistence: Option<BankIncrementalSnapshotPersistence>,
-    pub(crate) epoch_accounts_hash: Option<Hash>,
+    pub blockhash_queue: BlockhashQueue,
+    pub ancestors: AncestorsForSerialization,
+    pub hash: Hash,
+    pub parent_hash: Hash,
+    pub parent_slot: Slot,
+    pub hard_forks: HardForks,
+    pub transaction_count: u64,
+    pub tick_height: u64,
+    pub signature_count: u64,
+    pub capitalization: u64,
+    pub max_tick_height: u64,
+    pub hashes_per_tick: Option<u64>,
+    pub ticks_per_slot: u64,
+    pub ns_per_slot: u128,
+    pub genesis_creation_time: UnixTimestamp,
+    pub slots_per_year: f64,
+    pub slot: Slot,
+    pub epoch: Epoch,
+    pub block_height: u64,
+    pub collector_id: Pubkey,
+    pub collector_fees: u64,
+    pub fee_rate_governor: FeeRateGovernor,
+    pub collected_rent: u64,
+    pub rent_collector: RentCollector,
+    pub epoch_schedule: EpochSchedule,
+    pub inflation: Inflation,
+    pub stakes: Stakes<Delegation>,
+    pub epoch_stakes: HashMap<Epoch, EpochStakes>,
+    pub is_delta: bool,
+    pub accounts_data_len: u64,
+    pub incremental_snapshot_persistence: Option<BankIncrementalSnapshotPersistence>,
+    pub epoch_accounts_hash: Option<Hash>,
     // When removing the accounts lt hash featurization code, also remove this Option wrapper
-    pub(crate) accounts_lt_hash: Option<AccountsLtHash>,
-    pub(crate) bank_hash_stats: BankHashStats,
+    pub accounts_lt_hash: Option<AccountsLtHash>,
+    pub bank_hash_stats: BankHashStats,
 }
 
 /// Bank's common fields shared by all supported snapshot versions for serialization.
@@ -1697,7 +1697,7 @@ impl Bank {
     }
 
     /// Create a bank from explicit arguments and deserialized fields from snapshot
-    pub(crate) fn new_from_fields(
+    pub fn new_from_fields(
         bank_rc: BankRc,
         genesis_config: &GenesisConfig,
         runtime_config: Arc<RuntimeConfig>,
@@ -1974,6 +1974,14 @@ impl Bank {
         &self.collector_id
     }
 
+    pub fn set_collector_id_for_tests(&mut self, collector_id: Pubkey) {
+        self.collector_id = collector_id;
+    }
+
+    pub fn get_accounts_lt_hash_for_tests(&self) -> AccountsLtHash {
+        self.accounts_lt_hash.lock().unwrap().clone()
+    }
+
     pub fn genesis_creation_time(&self) -> UnixTimestamp {
         self.genesis_creation_time
     }
@@ -2073,7 +2081,7 @@ impl Bank {
             .unwrap_or_default()
     }
 
-    fn update_clock(&self, parent_epoch: Option<Epoch>) {
+    pub fn update_clock(&self, parent_epoch: Option<Epoch>) {
         let mut unix_timestamp = self.clock().unix_timestamp;
         // set epoch_start_timestamp to None to warp timestamp
         let epoch_start_timestamp = {
@@ -2205,7 +2213,7 @@ impl Bank {
         });
     }
 
-    fn update_slot_hashes(&self) {
+    pub fn update_slot_hashes(&self) {
         self.update_sysvar_account(&sysvar::slot_hashes::id(), |account| {
             let mut slot_hashes = account
                 .as_ref()
