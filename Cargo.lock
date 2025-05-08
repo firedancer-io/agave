@@ -6734,7 +6734,7 @@ dependencies = [
 
 [[package]]
 name = "solana-bundle"
-version = "2.2.1"
+version = "2.2.13"
 dependencies = [
  "assert_matches",
  "itertools 0.12.1",
@@ -7305,7 +7305,6 @@ dependencies = [
  "serde_json",
  "serial_test",
  "slab",
- "solana-account-decoder",
  "solana-accounts-db",
  "solana-address-lookup-table-program",
  "solana-bloom",
@@ -8619,6 +8618,7 @@ dependencies = [
 name = "solana-poh"
 version = "2.2.13"
 dependencies = [
+ "agave-feature-set",
  "assert_matches",
  "bincode",
  "core_affinity",
