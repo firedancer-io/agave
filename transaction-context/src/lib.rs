@@ -425,10 +425,12 @@ impl TransactionContext {
             if mut_account_ref.owner() != &solana_sdk_ids::sysvar::id() {
                 return Err(InstructionError::InvalidAccountOwner);
             }
-            instructions::store_current_index_checked(
-                mut_account_ref.data_as_mut_slice(),
-                self.top_level_instruction_index as u16,
-            )?;
+            if mut_account_ref.data().len() >= 2 {
+                instructions::store_current_index_checked(
+                    mut_account_ref.data_as_mut_slice(),
+                    self.top_level_instruction_index as u16,
+                )?;
+            }
         }
         Ok(())
     }
