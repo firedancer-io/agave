@@ -401,10 +401,12 @@ impl TransactionContext {
                 .ok_or(InstructionError::NotEnoughAccountKeys)?
                 .try_borrow_mut()
                 .map_err(|_| InstructionError::AccountBorrowFailed)?;
-            instructions::store_current_index(
-                mut_account_ref.data_as_mut_slice(),
-                self.top_level_instruction_index as u16,
-            );
+            if mut_account_ref.data().len() >= 2 {
+                instructions::store_current_index(
+                    mut_account_ref.data_as_mut_slice(),
+                    self.top_level_instruction_index as u16,
+                );
+            }
         }
         Ok(())
     }
