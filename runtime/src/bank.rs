@@ -1787,6 +1787,7 @@ impl Bank {
         additional_builtins: Option<&[BuiltinPrototype]>,
         debug_do_not_add_builtins: bool,
         accounts_data_size_initial: u64,
+        #[allow(unused)] feature_set: Option<FeatureSet>,
     ) -> Self {
         let now = Instant::now();
         let ancestors = Ancestors::from(&fields.ancestors);
@@ -1859,6 +1860,9 @@ impl Bank {
             transaction_log_collector_config: Arc::<RwLock<TransactionLogCollectorConfig>>::default(
             ),
             transaction_log_collector: Arc::<RwLock<TransactionLogCollector>>::default(),
+            #[cfg(feature = "dev-context-only-utils")]
+            feature_set: Arc::new(feature_set.unwrap_or_default()),
+            #[cfg(not(feature = "dev-context-only-utils"))]
             feature_set: Arc::<FeatureSet>::default(),
             reserved_account_keys: Arc::<ReservedAccountKeys>::default(),
             drop_callback: RwLock::new(OptionalDropCallback(None)),
@@ -6964,6 +6968,7 @@ impl TransactionProcessingCallback for Bank {
         let existing_genuine_program =
             self.get_account_with_fixed_root(program_id)
                 .and_then(|account| {
+
                     // it's very unlikely to be squatted at program_id as non-system account because of burden to
                     // find victim's pubkey/hash. So, when account.owner is indeed native_loader's, it's
                     // safe to assume it's a genuine program.
@@ -6975,6 +6980,7 @@ impl TransactionProcessingCallback for Bank {
                         None
                     }
                 });
+
 
         // introducing builtin program
         if existing_genuine_program.is_some() {
