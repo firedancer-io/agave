@@ -331,7 +331,7 @@ impl Stakes<StakeAccount> {
     }
 
     /// Sum the stakes that point to the given voter_pubkey
-    fn calculate_stake(
+    pub fn calculate_stake(
         stake_delegations: &ImHashMap<Pubkey, StakeAccount>,
         voter_pubkey: &Pubkey,
         epoch: Epoch,
