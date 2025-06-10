@@ -262,6 +262,20 @@ pub fn execute_batch<'a>(
         replay_vote_sender,
     );
 
+    for txn in commit_results
+        .iter()
+        .zip(batch.sanitized_transactions())
+        .filter_map(|(commit_result, tx)| commit_result.was_committed().then_some(tx))
+    {
+        extern "C" {
+            fn fd_ext_poh_publish_executed_txn(data: *const u8);
+        }
+
+        let mut memory: [u8; 64] = [0u8; 64];
+        memory.copy_from_slice(txn.signature().as_ref());
+        unsafe { fd_ext_poh_publish_executed_txn(memory.as_ptr()) };
+    }
+
     let committed_transactions = commit_results
         .iter()
         .zip(batch.sanitized_transactions())
