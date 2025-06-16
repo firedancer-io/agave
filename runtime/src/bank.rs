@@ -65,6 +65,7 @@ use {
     dashmap::{DashMap, DashSet},
     log::*,
     partitioned_epoch_rewards::PartitionedRewardsCalculation,
+    qualifier_attr::qualifiers,
     rayon::{
         iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator},
         ThreadPoolBuilder,
@@ -2348,6 +2349,7 @@ impl Bank {
         self.epoch_stakes.insert(epoch, stakes);
     }
 
+    #[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
     fn update_rent(&self) {
         self.update_sysvar_account(&sysvar::rent::id(), |account| {
             create_account(
@@ -2357,6 +2359,7 @@ impl Bank {
         });
     }
 
+    #[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
     fn update_epoch_schedule(&self) {
         self.update_sysvar_account(&sysvar::epoch_schedule::id(), |account| {
             create_account(
@@ -6968,7 +6971,6 @@ impl TransactionProcessingCallback for Bank {
         let existing_genuine_program =
             self.get_account_with_fixed_root(program_id)
                 .and_then(|account| {
-
                     // it's very unlikely to be squatted at program_id as non-system account because of burden to
                     // find victim's pubkey/hash. So, when account.owner is indeed native_loader's, it's
                     // safe to assume it's a genuine program.
@@ -6980,7 +6982,6 @@ impl TransactionProcessingCallback for Bank {
                         None
                     }
                 });
-
 
         // introducing builtin program
         if existing_genuine_program.is_some() {
