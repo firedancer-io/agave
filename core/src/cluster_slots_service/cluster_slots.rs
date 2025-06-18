@@ -120,7 +120,7 @@ impl ClusterSlots {
                     .iter()
                     .map(|(_pubkey, vote_accounts)| vote_accounts.vote_accounts.capacity())
                     .sum::<usize>();
-                (validator_stakes.capacity(), validator_len)
+                (validator_stakes.len(), validator_len)
             };
             datapoint_info!(
                 "cluster-slots-size",
