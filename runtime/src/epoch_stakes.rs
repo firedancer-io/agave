@@ -3,11 +3,11 @@ use {
     serde::{Deserialize, Serialize},
     solana_sdk::{clock::Epoch, pubkey::Pubkey},
     solana_vote::vote_account::VoteAccountsHashMap,
-    std::{collections::HashMap, sync::Arc},
+    std::{collections::HashMap, sync::Arc, collections::BTreeMap},
 };
 
-pub type NodeIdToVoteAccounts = HashMap<Pubkey, NodeVoteAccounts>;
-pub type EpochAuthorizedVoters = HashMap<Pubkey, Pubkey>;
+pub type NodeIdToVoteAccounts = BTreeMap<Pubkey, NodeVoteAccounts>;
+pub type EpochAuthorizedVoters = BTreeMap<Pubkey, Pubkey>;
 
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Clone, Serialize, Debug, Deserialize, Default, PartialEq, Eq)]
@@ -92,7 +92,7 @@ impl EpochStakes {
         epoch_vote_accounts: &VoteAccountsHashMap,
         leader_schedule_epoch: Epoch,
     ) -> (u64, NodeIdToVoteAccounts, EpochAuthorizedVoters) {
-        let mut node_id_to_vote_accounts: NodeIdToVoteAccounts = HashMap::new();
+        let mut node_id_to_vote_accounts: NodeIdToVoteAccounts = BtreeMap::new();
         let total_stake = epoch_vote_accounts
             .iter()
             .map(|(_, (stake, _))| stake)
