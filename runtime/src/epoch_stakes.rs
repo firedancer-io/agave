@@ -93,7 +93,7 @@ impl EpochStakes {
         epoch_vote_accounts: &VoteAccountsHashMap,
         leader_schedule_epoch: Epoch,
     ) -> (u64, NodeIdToVoteAccounts, EpochAuthorizedVoters) {
-        let mut node_id_to_vote_accounts: NodeIdToVoteAccounts = BtreeMap::new();
+        let mut node_id_to_vote_accounts: NodeIdToVoteAccounts = BTreeMap::new();
         let total_stake = epoch_vote_accounts
             .iter()
             .map(|(_, (stake, _))| stake)
