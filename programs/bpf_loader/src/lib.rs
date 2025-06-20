@@ -1679,7 +1679,7 @@ fn execute<'a, 'b: 'a>(
             ProgramResult::Err(mut error) => {
                 if invoke_context
                     .get_feature_set()
-                    .is_active(&agave_feature_set::deplete_cu_meter_on_vm_failure::id())
+                    .deplete_cu_meter_on_vm_failure
                     && !matches!(error, EbpfError::SyscallError(_))
                 {
                     // when an exception is thrown during the execution of a
