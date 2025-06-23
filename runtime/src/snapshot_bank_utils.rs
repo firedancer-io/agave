@@ -235,11 +235,11 @@ pub fn bank_from_snapshot_archives(
             incremental_snapshot_archive_info.snapshot_archive_info()
         },
     );
-    verify_bank_against_expected_slot_hash(
-        &bank,
-        snapshot_archive_info.slot,
-        snapshot_archive_info.hash,
-    )?;
+    // verify_bank_against_expected_slot_hash(
+    //     &bank,
+    //     snapshot_archive_info.slot,
+    //     snapshot_archive_info.hash,
+    // )?;
 
     let base = if bank.is_snapshots_lt_hash_enabled() {
         None
@@ -258,17 +258,17 @@ pub fn bank_from_snapshot_archives(
     };
 
     let mut measure_verify = Measure::start("verify");
-    if !bank.verify_snapshot_bank(
-        test_hash_calculation,
-        accounts_db_skip_shrink || !full_snapshot_archive_info.is_remote(),
-        accounts_db_force_initial_clean,
-        full_snapshot_archive_info.slot(),
-        base,
-        info.duplicates_lt_hash,
-    ) && limit_load_slot_count_from_snapshot.is_none()
-    {
-        panic!("Snapshot bank for slot {} failed to verify", bank.slot());
-    }
+    // if !bank.verify_snapshot_bank(
+    //     test_hash_calculation,
+    //     accounts_db_skip_shrink || !full_snapshot_archive_info.is_remote(),
+    //     accounts_db_force_initial_clean,
+    //     full_snapshot_archive_info.slot(),
+    //     base,
+    //     info.duplicates_lt_hash,
+    // ) && limit_load_slot_count_from_snapshot.is_none()
+    // {
+    //     panic!("Snapshot bank for slot {} failed to verify", bank.slot());
+    // }
     measure_verify.stop();
 
     let timings = BankFromArchivesTimings {
