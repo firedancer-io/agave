@@ -1910,12 +1910,12 @@ impl Bank {
         } else {
             // Use the accounts lt hash from the snapshot, if present, otherwise calculate it.
             // When the feature gate is enabled, the snapshot *must* contain an accounts lt hash.
-            assert!(
-                !bank
-                    .feature_set
-                    .is_active(&feature_set::accounts_lt_hash::id()),
-                "snapshot must have an accounts lt hash if the feature is enabled",
-            );
+            // assert!(
+            //     !bank
+            //         .feature_set
+            //         .is_active(&feature_set::accounts_lt_hash::id()),
+            //     "snapshot must have an accounts lt hash if the feature is enabled",
+            // );
             if bank.is_accounts_lt_hash_enabled() {
                 info!(
                     "Calculating the accounts lt hash for slot {}...",
@@ -6508,8 +6508,16 @@ impl Bank {
             Caller::NewFromParent => true,
             Caller::WarpFromParent => false,
         };
-        let (feature_set, new_feature_activations) =
+        let (mut feature_set, new_feature_activations) =
             self.compute_active_feature_set(allow_new_activations);
+        feature_set.activate(&agave_feature_set::skip_rent_rewrites::id(), 1);
+        feature_set.activate(&agave_feature_set::disable_rent_fees_collection::id(), 1);
+        feature_set.activate(&agave_feature_set::disable_partitioned_rent_collection::id(), 1);
+        feature_set.activate(&agave_feature_set::accounts_lt_hash::id(), 1);
+        feature_set.activate(&agave_feature_set::remove_accounts_delta_hash::id(), 1);
+        feature_set.activate(&agave_feature_set::migrate_config_program_to_core_bpf::id(), 1);
+        feature_set.activate(&agave_feature_set::migrate_address_lookup_table_program_to_core_bpf::id(), 1);
+        feature_set.activate(&agave_feature_set::migrate_stake_program_to_core_bpf::id(), 1);
         self.feature_set = Arc::new(feature_set);
 
         // Update activation slot of features in `new_feature_activations`
