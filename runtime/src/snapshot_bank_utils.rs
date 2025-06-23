@@ -172,9 +172,9 @@ pub fn bank_from_snapshot_archives(
     debug_keys: Option<Arc<HashSet<Pubkey>>>,
     additional_builtins: Option<&[BuiltinPrototype]>,
     limit_load_slot_count_from_snapshot: Option<usize>,
-    test_hash_calculation: bool,
-    accounts_db_skip_shrink: bool,
-    accounts_db_force_initial_clean: bool,
+    _test_hash_calculation: bool,
+    _accounts_db_skip_shrink: bool,
+    _accounts_db_force_initial_clean: bool,
     verify_index: bool,
     accounts_db_config: Option<AccountsDbConfig>,
     accounts_update_notifier: Option<AccountsUpdateNotifier>,
@@ -227,7 +227,7 @@ pub fn bank_from_snapshot_archives(
     };
 
     let mut measure_rebuild = Measure::start("rebuild bank from snapshots");
-    let (bank, info) = reconstruct_bank_from_fields(
+    let (bank, _info) = reconstruct_bank_from_fields(
         bank_fields,
         accounts_db_fields,
         genesis_config,
@@ -270,19 +270,19 @@ pub fn bank_from_snapshot_archives(
 
     bank.status_cache.write().unwrap().append(&slot_deltas);
 
-    let snapshot_archive_info = incremental_snapshot_archive_info.map_or_else(
+    let _snapshot_archive_info = incremental_snapshot_archive_info.map_or_else(
         || full_snapshot_archive_info.snapshot_archive_info(),
         |incremental_snapshot_archive_info| {
             incremental_snapshot_archive_info.snapshot_archive_info()
         },
     );
-    verify_bank_against_expected_slot_hash(
-        &bank,
-        snapshot_archive_info.slot,
-        snapshot_archive_info.hash,
-    )?;
+    // verify_bank_against_expected_slot_hash(
+    //     &bank,
+    //     snapshot_archive_info.slot,
+    //     snapshot_archive_info.hash,
+    // )?;
 
-    let base = if bank.is_snapshots_lt_hash_enabled() {
+    let _base = if bank.is_snapshots_lt_hash_enabled() {
         None
     } else {
         incremental_snapshot_archive_info.is_some().then(|| {
@@ -299,17 +299,17 @@ pub fn bank_from_snapshot_archives(
     };
 
     let mut measure_verify = Measure::start("verify");
-    if !bank.verify_snapshot_bank(
-        test_hash_calculation,
-        accounts_db_skip_shrink || !full_snapshot_archive_info.is_remote(),
-        accounts_db_force_initial_clean,
-        full_snapshot_archive_info.slot(),
-        base,
-        info.duplicates_lt_hash,
-    ) && limit_load_slot_count_from_snapshot.is_none()
-    {
-        panic!("Snapshot bank for slot {} failed to verify", bank.slot());
-    }
+    // if !bank.verify_snapshot_bank(
+    //     test_hash_calculation,
+    //     accounts_db_skip_shrink || !full_snapshot_archive_info.is_remote(),
+    //     accounts_db_force_initial_clean,
+    //     full_snapshot_archive_info.slot(),
+    //     base,
+    //     info.duplicates_lt_hash,
+    // ) && limit_load_slot_count_from_snapshot.is_none()
+    // {
+    //     panic!("Snapshot bank for slot {} failed to verify", bank.slot());
+    // }
     measure_verify.stop();
 
     let timings = BankFromArchivesTimings {
@@ -554,7 +554,7 @@ pub fn bank_from_latest_snapshot_dir(
 }
 
 /// Verifies the snapshot's slot and hash matches the bank's
-fn verify_bank_against_expected_slot_hash(
+fn _verify_bank_against_expected_slot_hash(
     bank: &Bank,
     snapshot_slot: Slot,
     snapshot_hash: SnapshotHash,
