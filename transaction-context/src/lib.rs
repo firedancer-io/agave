@@ -94,7 +94,8 @@ impl TransactionAccounts {
         self.accounts.len()
     }
 
-    fn get(&self, index: IndexOfAccount) -> Option<&RefCell<AccountSharedData>> {
+    /* For use in vm syscall/interpreter fuzzer */
+    pub fn get(&self, index: IndexOfAccount) -> Option<&RefCell<AccountSharedData>> {
         self.accounts.get(index as usize)
     }
 
