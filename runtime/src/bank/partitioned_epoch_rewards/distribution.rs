@@ -42,7 +42,7 @@ struct DistributionResults {
 
 impl Bank {
     /// Process reward distribution for the block if it is inside reward interval.
-    pub(in crate::bank) fn distribute_partitioned_epoch_rewards(&mut self) {
+    pub fn distribute_partitioned_epoch_rewards(&mut self) {
         let EpochRewardStatus::Active(status) = &self.epoch_reward_status else {
             return;
         };
@@ -190,7 +190,7 @@ impl Bank {
     }
 
     fn build_updated_stake_reward(
-        stakes_cache_accounts: &im::HashMap<Pubkey, StakeAccount<Delegation>>,
+        stakes_cache_accounts: &im::OrdMap<Pubkey, StakeAccount<Delegation>>,
         partitioned_stake_reward: &PartitionedStakeReward,
     ) -> Result<StakeReward, DistributionError> {
         let stake_account = stakes_cache_accounts

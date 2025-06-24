@@ -4,7 +4,7 @@
 use solana_stake_interface::state::Stake;
 use {
     crate::{stake_account, stake_history::StakeHistory},
-    im::HashMap as ImHashMap,
+    im::OrdMap as ImHashMap,
     log::error,
     num_derive::ToPrimitive,
     rayon::{ThreadPool, prelude::*},
@@ -166,19 +166,19 @@ impl StakesCache {
 #[derive(Default, Clone, PartialEq, Debug, Serialize)]
 pub struct Stakes<T: Clone> {
     /// vote accounts
-    vote_accounts: VoteAccounts,
+    pub vote_accounts: VoteAccounts,
 
     /// stake_delegations
-    stake_delegations: ImHashMap<Pubkey, T>,
+    pub stake_delegations: ImHashMap<Pubkey, T>,
 
     /// unused
-    unused: u64,
+    pub unused: u64,
 
     /// current epoch, used to calculate current stake
-    epoch: Epoch,
+    pub epoch: Epoch,
 
     /// history of staking levels
-    stake_history: StakeHistory,
+    pub stake_history: StakeHistory,
 }
 
 impl<T: Clone> Stakes<T> {
@@ -365,7 +365,7 @@ impl Stakes<StakeAccount> {
     }
 
     /// Sum the stakes that point to the given voter_pubkey
-    fn calculate_stake(
+    pub fn calculate_stake(
         stake_delegations: &ImHashMap<Pubkey, StakeAccount>,
         voter_pubkey: &Pubkey,
         epoch: Epoch,

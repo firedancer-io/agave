@@ -164,6 +164,7 @@ pub struct UiRent {
     pub lamports_per_byte: StringAmount,
 }
 
+#[allow(deprecated)]
 impl From<Rent> for UiRent {
     fn from(rent: Rent) -> Self {
         Self {

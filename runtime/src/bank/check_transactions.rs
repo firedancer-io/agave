@@ -4,7 +4,7 @@ use {
     solana_accounts_db::blockhash_queue::BlockhashQueue,
     solana_clock::{MAX_TRANSACTION_FORWARDING_DELAY, Slot},
     solana_fee::{FeeFeatures, calculate_fee_details},
-    solana_fee_structure::{FeeBudgetLimits, FeeDetails},
+    solana_fee_structure::FeeBudgetLimits,
     solana_nonce::state::{Data as NonceData, DurableNonce},
     solana_nonce_account as nonce_account,
     solana_program_runtime::execution_budget::SVMTransactionExecutionAndFeeBudgetLimits,
@@ -153,15 +153,9 @@ impl Bank {
 
     fn checked_transactions_details_with_test_override(
         nonce_address: Option<Pubkey>,
-        lamports_per_signature: u64,
-        mut compute_budget_and_limits: SVMTransactionExecutionAndFeeBudgetLimits,
+        _lamports_per_signature: u64,
+        compute_budget_and_limits: SVMTransactionExecutionAndFeeBudgetLimits,
     ) -> CheckedTransactionDetails {
-        // This is done to support legacy tests. The tests should be updated, and check
-        // for 0 lamports_per_signature should be removed from the code.
-        if lamports_per_signature == 0 {
-            compute_budget_and_limits.fee_details = FeeDetails::default();
-        }
-
         CheckedTransactionDetails::new(nonce_address, compute_budget_and_limits)
     }
 
