@@ -4,11 +4,11 @@ use {
     solana_clock::Epoch,
     solana_pubkey::Pubkey,
     solana_vote::vote_account::VoteAccountsHashMap,
-    std::{collections::HashMap, sync::Arc},
+    std::{collections::HashMap, sync::Arc, collections::BTreeMap},
 };
 
-pub type NodeIdToVoteAccounts = HashMap<Pubkey, NodeVoteAccounts>;
-pub type EpochAuthorizedVoters = HashMap<Pubkey, Pubkey>;
+pub type NodeIdToVoteAccounts = BTreeMap<Pubkey, NodeVoteAccounts>;
+pub type EpochAuthorizedVoters = BTreeMap<Pubkey, Pubkey>;
 
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Clone, Serialize, Debug, Deserialize, Default, PartialEq, Eq)]
@@ -29,7 +29,7 @@ pub struct EpochStakes {
 }
 
 impl EpochStakes {
-    pub(crate) fn new(stakes: Arc<StakesEnum>, leader_schedule_epoch: Epoch) -> Self {
+    pub fn new(stakes: Arc<StakesEnum>, leader_schedule_epoch: Epoch) -> Self {
         let epoch_vote_accounts = stakes.vote_accounts();
         let (total_stake, node_id_to_vote_accounts, epoch_authorized_voters) =
             Self::parse_epoch_vote_accounts(epoch_vote_accounts.as_ref(), leader_schedule_epoch);
@@ -50,7 +50,7 @@ impl EpochStakes {
             Arc::new(StakesEnum::Accounts(crate::stakes::Stakes::new_for_tests(
                 0,
                 solana_vote::vote_account::VoteAccounts::from(Arc::new(vote_accounts_hash_map)),
-                im::HashMap::default(),
+                im::OrdMap::default(),
             ))),
             leader_schedule_epoch,
         )
@@ -93,7 +93,7 @@ impl EpochStakes {
         epoch_vote_accounts: &VoteAccountsHashMap,
         leader_schedule_epoch: Epoch,
     ) -> (u64, NodeIdToVoteAccounts, EpochAuthorizedVoters) {
-        let mut node_id_to_vote_accounts: NodeIdToVoteAccounts = HashMap::new();
+        let mut node_id_to_vote_accounts: NodeIdToVoteAccounts = BTreeMap::new();
         let total_stake = epoch_vote_accounts
             .iter()
             .map(|(_, (stake, _))| stake)
