@@ -27,7 +27,7 @@ use {
     solana_measure::measure::Measure,
     solana_metrics::inc_new_counter_error,
     solana_rayon_threadlimit::get_thread_count,
-    solana_runtime::bank_forks::{BankForks, SharableBanks},
+    solana_runtime::{bank::Bank, bank_forks::{BankForks, SharableBanks}},
     solana_streamer::evicting_sender::EvictingSender,
     std::{
         borrow::Cow,
@@ -107,6 +107,60 @@ impl WindowServiceMetrics {
     }
 }
 
+/// Per-shred duplicate handling, extracted from `run_check_duplicate` so the
+/// shred-parse differential harness can run the same code path.
+pub fn check_duplicate_shred(
+    cluster_info: &ClusterInfo,
+    blockstore: &Blockstore,
+    duplicate_slots_sender: &Sender<Slot>,
+    root_bank: &Bank,
+    shred: PossibleDuplicateShred,
+) -> Result<()> {
+    let shred_slot = shred.slot();
+    let validate_chained_block_id = shred::filter::check_feature_activation_from_bank(
+        &feature_set::validate_chained_block_id::id(),
+        shred_slot,
+        root_bank,
+    );
+    let (shred1, shred2) = match shred {
+        PossibleDuplicateShred::LastIndexConflict(shred, conflict)
+        | PossibleDuplicateShred::ErasureConflict(shred, conflict)
+        | PossibleDuplicateShred::MerkleRootConflict(shred, conflict) => (shred, conflict),
+        PossibleDuplicateShred::ChainedMerkleRootConflict(_shred, _conflict) => {
+            if validate_chained_block_id {
+                // Although chained merkle roots are not necessary for agave duplicate resolution protocols,
+                // We still need to mark the block as dead for other client teams.
+                blockstore.set_dead_slot(shred_slot)?;
+            }
+            return Ok(());
+        }
+        PossibleDuplicateShred::Exists(shred) => {
+            // Unlike the other cases we have to wait until here to decide to handle the duplicate and store
+            // in blockstore. This is because the duplicate could have been part of the same insert batch,
+            // so we wait until the batch has been written.
+            if blockstore.has_duplicate_shreds_in_slot(shred_slot) {
+                return Ok(()); // A duplicate is already recorded
+            }
+            let Some(existing_shred_payload) = blockstore.is_shred_duplicate(&shred) else {
+                return Ok(()); // Not a duplicate
+            };
+            blockstore.store_duplicate_slot(
+                shred_slot,
+                existing_shred_payload.clone(),
+                shred.clone().into_payload(),
+            )?;
+            (shred, shred::Payload::from(existing_shred_payload))
+        }
+    };
+
+    // Propagate duplicate proof through gossip
+    cluster_info.push_duplicate_shred(&shred1, &shred2)?;
+    // Notify duplicate consensus state machine
+    duplicate_slots_sender.send(shred_slot)?;
+
+    Ok(())
+}
+
 fn run_check_duplicate(
     cluster_info: &ClusterInfo,
     blockstore: &Blockstore,
@@ -122,49 +176,13 @@ fn run_check_duplicate(
             last_updated = Instant::now();
             root_bank = bank_forks.read().unwrap().root_bank();
         }
-        let shred_slot = shred.slot();
-        let validate_chained_block_id = shred::filter::check_feature_activation_from_bank(
-            &feature_set::validate_chained_block_id::id(),
-            shred_slot,
+        check_duplicate_shred(
+            cluster_info,
+            blockstore,
+            duplicate_slots_sender,
             &root_bank,
-        );
-        let (shred1, shred2) = match shred {
-            PossibleDuplicateShred::LastIndexConflict(shred, conflict)
-            | PossibleDuplicateShred::ErasureConflict(shred, conflict)
-            | PossibleDuplicateShred::MerkleRootConflict(shred, conflict) => (shred, conflict),
-            PossibleDuplicateShred::ChainedMerkleRootConflict(_shred, _conflict) => {
-                if validate_chained_block_id {
-                    // Although chained merkle roots are not necessary for agave duplicate resolution protocols,
-                    // We still need to mark the block as dead for other client teams.
-                    blockstore.set_dead_slot(shred_slot)?;
-                }
-                return Ok(());
-            }
-            PossibleDuplicateShred::Exists(shred) => {
-                // Unlike the other cases we have to wait until here to decide to handle the duplicate and store
-                // in blockstore. This is because the duplicate could have been part of the same insert batch,
-                // so we wait until the batch has been written.
-                if blockstore.has_duplicate_shreds_in_slot(shred_slot) {
-                    return Ok(()); // A duplicate is already recorded
-                }
-                let Some(existing_shred_payload) = blockstore.is_shred_duplicate(&shred) else {
-                    return Ok(()); // Not a duplicate
-                };
-                blockstore.store_duplicate_slot(
-                    shred_slot,
-                    existing_shred_payload.clone(),
-                    shred.clone().into_payload(),
-                )?;
-                (shred, shred::Payload::from(existing_shred_payload))
-            }
-        };
-
-        // Propagate duplicate proof through gossip
-        cluster_info.push_duplicate_shred(&shred1, &shred2)?;
-        // Notify duplicate consensus state machine
-        duplicate_slots_sender.send(shred_slot)?;
-
-        Ok(())
+            shred,
+        )
     };
     const RECV_TIMEOUT: Duration = Duration::from_millis(200);
     std::iter::once(shred_receiver.recv_timeout(RECV_TIMEOUT)?)

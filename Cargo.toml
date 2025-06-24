@@ -318,7 +318,7 @@ proptest = "1.11"
 prost = "0.14.3"
 prost-types = "0.14.3"
 protobuf-src = "1.1.0"
-protosol = "=6.1.0"
+protosol = { version = "=8.4.0", features = ["solana-types"] }
 qualifier_attr = { version = "0.2.2", default-features = false }
 quinn = "0.11.9"
 rand = "0.9.4"
@@ -473,7 +473,7 @@ solana-rpc-client-types = { path = "rpc-client-types", version = "=4.1.0-beta.1"
 solana-runtime = { path = "runtime", version = "=4.1.0-beta.1", features = ["agave-unstable-api"] }
 solana-runtime-transaction = { path = "runtime-transaction", version = "=4.1.0-beta.1", features = ["agave-unstable-api"] }
 solana-sanitize = "3.0.1"
-solana-sbpf = { version = "=0.20.0", default-features = false }
+solana-sbpf = { git = "https://github.com/firedancer-io/sbpf", branch = "sbpf-v0.20.0-patches", default-features = false }
 solana-sdk-ids = "3.1.0"
 solana-secp256k1-program = "3.0.1"
 solana-secp256k1-recover = "3.1.1"

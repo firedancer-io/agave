@@ -81,10 +81,7 @@ pub fn deploy_program(
         programdata,
         Arc::new(deployment_program_runtime_environment),
     )
-    .map_err(|err| {
-        ic_logger_msg!(log_collector, "{}", err);
-        InstructionError::InvalidAccountData
-    })?;
+    .map_err(|_| InstructionError::InvalidAccountData)?;
     #[cfg(feature = "metrics")]
     {
         load_elf_time.stop();
@@ -92,10 +89,8 @@ pub fn deploy_program(
     }
     #[cfg(feature = "metrics")]
     let mut verify_code_time = Measure::start("verify_code_time");
-    executable.verify::<RequisiteVerifier>().map_err(|err| {
-        ic_logger_msg!(log_collector, "{}", err);
-        InstructionError::InvalidAccountData
-    })?;
+    executable.verify::<RequisiteVerifier>()
+    .map_err(|_| InstructionError::InvalidAccountData)?;
     #[cfg(feature = "metrics")]
     {
         verify_code_time.stop();
@@ -115,10 +110,7 @@ pub fn deploy_program(
             load_program_metrics,
         )
     }
-    .map_err(|err| {
-        ic_logger_msg!(log_collector, "{}", err);
-        InstructionError::InvalidAccountData
-    })?;
+    .map_err(|_| InstructionError::InvalidAccountData)?;
     if let Some(old_entry) = program_cache_for_tx_batch.find(program_id) {
         executor.stats.merge_from(&old_entry.stats);
     }
