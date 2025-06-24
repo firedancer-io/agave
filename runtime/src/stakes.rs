@@ -2,7 +2,7 @@
 //! node stakes
 use {
     crate::{stake_account, stake_history::StakeHistory},
-    im::HashMap as ImHashMap,
+    im::OrdMap as ImHashMap,
     log::error,
     num_derive::ToPrimitive,
     rayon::{prelude::*, ThreadPool},
