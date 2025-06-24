@@ -139,7 +139,7 @@ impl Bank {
     }
 
     fn build_updated_stake_reward(
-        stakes_cache_accounts: &im::HashMap<Pubkey, StakeAccount<Delegation>>,
+        stakes_cache_accounts: &im::OrdMap<Pubkey, StakeAccount<Delegation>>,
         partitioned_stake_reward: &PartitionedStakeReward,
     ) -> Result<StakeReward, DistributionError> {
         let stake_account = stakes_cache_accounts
