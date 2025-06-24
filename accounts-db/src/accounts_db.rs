@@ -1222,7 +1222,7 @@ pub struct AccountsDb {
 }
 
 pub fn quarter_thread_count() -> usize {
-    std::cmp::max(2, num_cpus::get() / 4)
+    1
 }
 
 pub fn default_num_foreground_threads() -> usize {

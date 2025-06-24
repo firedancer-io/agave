@@ -14,6 +14,7 @@ agave-unstable-api = []
 
 [dependencies]
 tonic-build = { workspace = true }
+home = { workspace = true }
 
 # windows users should install the protobuf compiler manually and set the PROTOC
 # envar to point to the installed binary

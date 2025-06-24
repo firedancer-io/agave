@@ -852,6 +852,7 @@ where
         bank_fields,
         debug_keys,
         reconstructed_accounts_db_info.accounts_data_len,
+        None,
     );
 
     info!("rent_collector: {:?}", bank.rent_collector());

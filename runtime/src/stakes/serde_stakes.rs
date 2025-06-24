@@ -1,7 +1,7 @@
 use {
     super::{StakeAccount, Stakes},
     crate::stake_history::StakeHistory,
-    im::HashMap as ImHashMap,
+    im::OrdMap as ImHashMap,
     serde::{ser::SerializeMap, Deserialize, Deserializer, Serialize, Serializer},
     solana_clock::Epoch,
     solana_pubkey::Pubkey,

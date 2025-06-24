@@ -291,6 +291,16 @@ impl TransactionAccounts {
         unsafe { (*self.shared_account_fields.get()).len() }
     }
 
+    /* For use in vm syscall/interpreter fuzzer */
+    pub fn get_readonly(&self, index: IndexOfAccount) -> Result<AccountRef<'_>, InstructionError> {
+        self.try_borrow(index)
+    }
+
+    /* For use in vm syscall/interpreter fuzzer */
+    pub fn get_writable(&self, index: IndexOfAccount) -> Result<AccountRefMut<'_>, InstructionError> {
+        self.try_borrow_mut(index)
+    }
+
     #[cfg(not(target_os = "solana"))]
     pub fn touch(&self, index: IndexOfAccount) -> Result<(), InstructionError> {
         self.touched_flags
