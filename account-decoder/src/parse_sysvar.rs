@@ -166,6 +166,7 @@ pub struct UiRent {
     pub burn_percent: u8,
 }
 
+#[allow(deprecated)]
 impl From<Rent> for UiRent {
     fn from(rent: Rent) -> Self {
         Self {
