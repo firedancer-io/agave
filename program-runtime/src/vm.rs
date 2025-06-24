@@ -11,6 +11,7 @@ use {
         program_cache_entry::ProgramCacheEntry,
         serialization, stable_log,
     },
+    solana_sbpf::static_analysis::Analysis,
     solana_instruction::error::InstructionError,
     solana_program_entrypoint::{MAX_PERMITTED_DATA_INCREASE, SUCCESS},
     solana_sbpf::{
@@ -312,6 +313,12 @@ pub fn execute<'a, 'b: 'a>(
         let (compute_units_consumed, result) =
             vm.execute_program(executable, &mut execution_mode, &mut call_frames);
         let register_trace = std::mem::take(&mut vm.register_trace);
+        if executable.get_config().enable_register_tracing {
+            let analysis = Analysis::from_executable(executable).unwrap();
+            analysis
+                .disassemble_register_trace(&mut std::io::stdout(), &register_trace)
+                .unwrap();
+        }
         MEMORY_POOL.with_borrow_mut(|memory_pool| {
             memory_pool.put_stack(stack);
             memory_pool.put_heap(heap);

@@ -430,6 +430,7 @@ impl From<SerdeInstructionError> for InstructionError {
 }
 
 impl From<InstructionError> for SerdeInstructionError {
+    #[allow(deprecated)]
     fn from(err: InstructionError) -> Self {
         match err {
             InstructionError::GenericError => Self::GenericError,
