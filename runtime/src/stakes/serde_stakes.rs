@@ -70,7 +70,7 @@ impl Serialize for SerdeStakesToStakeFormat {
     }
 }
 
-pub(crate) fn serialize_stake_accounts_to_delegation_format<S: Serializer>(
+pub fn serialize_stake_accounts_to_delegation_format<S: Serializer>(
     stakes: &Stakes<StakeAccount>,
     serializer: S,
 ) -> Result<S::Ok, S::Error> {
@@ -180,7 +180,7 @@ impl Serialize for SerdeStakeAccountMapToStakeFormat {
 /// deserialization without creating im::HashMap (such conversion is deferred until
 /// data is actually needed).
 #[derive(Clone, Debug, Deserialize)]
-pub(crate) struct DeserializableStakes<T> {
+pub struct DeserializableStakes<T> {
     pub vote_accounts: VoteAccounts,
     pub stake_delegations: Vec<(Pubkey, T)>,
     pub unused: u64,
