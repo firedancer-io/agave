@@ -46,6 +46,7 @@ impl RentCollector {
         }
     }
 
+    #[allow(deprecated)]
     pub(crate) fn deprecate_rent_exemption_threshold(&mut self) {
         self.rent.lamports_per_byte_year =
             (self.rent.lamports_per_byte_year as f64 * self.rent.exemption_threshold) as u64;

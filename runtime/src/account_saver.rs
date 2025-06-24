@@ -129,7 +129,7 @@ fn collect_accounts_for_successful_tx<'a, T: SVMMessage>(
     }
 }
 
-fn collect_accounts_for_failed_tx<'a>(
+pub fn collect_accounts_for_failed_tx<'a>(
     collected_accounts: &mut Vec<(&'a Pubkey, &'a AccountSharedData)>,
     collected_account_transactions: &mut Option<Vec<&'a SanitizedTransaction>>,
     transaction_ref: Option<&'a SanitizedTransaction>,

@@ -7,13 +7,13 @@ use {
     solana_stake_interface::state::Stake,
     solana_vote::vote_account::VoteAccountsHashMap,
     std::{
-        collections::HashMap,
+        collections::{BTreeMap, HashMap},
         sync::{Arc, OnceLock},
     },
 };
 
-pub type NodeIdToVoteAccounts = HashMap<Pubkey, NodeVoteAccounts>;
-pub type EpochAuthorizedVoters = HashMap<Pubkey, Pubkey>;
+pub type NodeIdToVoteAccounts = BTreeMap<Pubkey, NodeVoteAccounts>;
+pub type EpochAuthorizedVoters = BTreeMap<Pubkey, Pubkey>;
 
 /// Entry in the [`BLSPubkeyToRankMap`] associating a validator's identity
 /// pubkey and BLS pubkey with its stake.
@@ -155,7 +155,7 @@ impl From<DeserializableVersionedEpochStakes> for VersionedEpochStakes {
 }
 
 impl VersionedEpochStakes {
-    pub(crate) fn new(stakes: SerdeStakesToStakeFormat, leader_schedule_epoch: Epoch) -> Self {
+    pub fn new(stakes: SerdeStakesToStakeFormat, leader_schedule_epoch: Epoch) -> Self {
         let epoch_vote_accounts = stakes.vote_accounts();
         let (total_stake, node_id_to_vote_accounts, epoch_authorized_voters) =
             Self::parse_epoch_vote_accounts(epoch_vote_accounts.as_ref(), leader_schedule_epoch);
@@ -177,7 +177,7 @@ impl VersionedEpochStakes {
             SerdeStakesToStakeFormat::Account(crate::stakes::Stakes::new_for_tests(
                 0,
                 solana_vote::vote_account::VoteAccounts::from(Arc::new(vote_accounts_hash_map)),
-                im::HashMap::default(),
+                im::OrdMap::default(),
             )),
             leader_schedule_epoch,
         )
@@ -256,8 +256,8 @@ impl VersionedEpochStakes {
         epoch_vote_accounts: &VoteAccountsHashMap,
         leader_schedule_epoch: Epoch,
     ) -> (u64, NodeIdToVoteAccounts, EpochAuthorizedVoters) {
-        let mut node_id_to_vote_accounts: NodeIdToVoteAccounts = HashMap::new();
-        let mut epoch_authorized_voters: EpochAuthorizedVoters = HashMap::new();
+        let mut node_id_to_vote_accounts: NodeIdToVoteAccounts = BTreeMap::new();
+        let mut epoch_authorized_voters: EpochAuthorizedVoters = BTreeMap::new();
         let mut total_stake: u64 = 0;
 
         for (key, (stake, account)) in epoch_vote_accounts.iter() {
