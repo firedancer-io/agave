@@ -8,13 +8,7 @@ use {
             self, Error, Nonce, SIZE_OF_COMMON_SHRED_HEADER, ShredFlags, ShredId, ShredType,
             ShredVariant, merkle_tree::SIZE_OF_MERKLE_ROOT, traits::Shred,
         },
-    },
-    solana_clock::Slot,
-    solana_hash::Hash,
-    solana_keypair::Keypair,
-    solana_perf::packet::{PacketRef, PacketRefMut},
-    solana_signature::{SIGNATURE_BYTES, Signature},
-    solana_signer::Signer,
+    }, qualifier_attr::qualifiers, solana_clock::Slot, solana_hash::Hash, solana_keypair::Keypair, solana_perf::packet::{PacketRef, PacketRefMut}, solana_signature::{SIGNATURE_BYTES, Signature}, solana_signer::Signer
 };
 #[cfg(test)]
 use {
@@ -156,6 +150,7 @@ fn get_data_size(shred: &[u8]) -> Result<u16, Error> {
 }
 
 #[inline]
+#[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
 pub(crate) fn get_data(shred: &[u8]) -> Result<&[u8], Error> {
     match get_shred_variant(shred)? {
         ShredVariant::MerkleCode { .. } => Err(Error::InvalidShredType),
