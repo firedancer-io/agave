@@ -5533,11 +5533,16 @@ dependencies = [
 
 [[package]]
 name = "protosol"
-version = "6.1.0"
+version = "8.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "acef24e715f0ce9ac6491004da1c35c919c60517f976f61e0f05f34d22e873ec"
+checksum = "4917daeaee8127b0a7e0b9c68ad8ed834b4b0eb8c8c186eb0fba8d3ecc2cd6d5"
 dependencies = [
  "prost 0.11.9",
+ "solana-account 4.3.0",
+ "solana-epoch-schedule",
+ "solana-inflation",
+ "solana-message",
+ "solana-pubkey 4.2.0",
 ]
 
 [[package]]
@@ -10146,8 +10151,7 @@ checksum = "dcf09694a0fc14e5ffb18f9b7b7c0f15ecb6eac5b5610bf76a1853459d19daf9"
 [[package]]
 name = "solana-sbpf"
 version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1b120fcbbc0d8562997183bef32c76a28400ecae7d8c9fff279d33002783a29"
+source = "git+https://github.com/firedancer-io/sbpf?branch=sbpf-v0.20.0-patches#6cd6372eb4ee631f792642f97fe825bc269aaf58"
 dependencies = [
  "byteorder",
  "combine 3.8.1",
