@@ -1863,7 +1863,7 @@ impl AccountsDb {
             let accounts_hash_cache_path =
                 base_working_path.join(Self::DEFAULT_ACCOUNTS_HASH_CACHE_DIR);
             if !accounts_hash_cache_path.exists() {
-                fs::create_dir(&accounts_hash_cache_path).expect("create accounts hash cache dir");
+                let _ = fs::create_dir(&accounts_hash_cache_path);
             }
             accounts_hash_cache_path
         });
