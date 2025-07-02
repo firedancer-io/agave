@@ -29,7 +29,7 @@ pub struct DuplicateShred {
     pub(crate) wallclock: u64,
     pub(crate) slot: Slot,
     _unused: u32,
-    _unused_shred_type: ShredType,
+    _unused_shred_type: u8,
     // Serialized DuplicateSlotProof split into chunks.
     num_chunks: u8,
     chunk_index: u8,
@@ -244,7 +244,7 @@ where
             chunk_index: i as u8,
             chunk,
             _unused: 0,
-            _unused_shred_type: ShredType::Code,
+            _unused_shred_type: ShredType::Code.into(),
         });
     Ok(chunks)
 }
@@ -354,7 +354,7 @@ pub(crate) mod tests {
             from: Pubkey::new_unique(),
             wallclock: u64::MAX,
             slot: Slot::MAX,
-            _unused_shred_type: ShredType::Data,
+            _unused_shred_type: ShredType::Data.into(),
             num_chunks: u8::MAX,
             chunk_index: u8::MAX,
             chunk: Vec::default(),
@@ -491,7 +491,7 @@ pub(crate) mod tests {
                 chunk_index: i as u8,
                 chunk,
                 _unused: 0,
-                _unused_shred_type: ShredType::Code,
+                _unused_shred_type: ShredType::Code.into(),
             });
         Ok(chunks)
     }
