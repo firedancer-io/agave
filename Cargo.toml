@@ -493,7 +493,7 @@ solana-rpc-client-types = { path = "rpc-client-types", version = "=2.3.1" }
 solana-runtime = { path = "runtime", version = "=2.3.1" }
 solana-runtime-transaction = { path = "runtime-transaction", version = "=2.3.1" }
 solana-sanitize = "2.2.1"
-solana-sbpf = "=0.11.1"
+solana-sbpf = { git = "https://github.com/firedancer-io/sbpf", branch = "sbpf-v0.11.1-patches" }
 solana-sdk-ids = "2.2.1"
 solana-secp256k1-program = "2.2.1"
 solana-secp256k1-recover = "2.2.1"
