@@ -683,7 +683,7 @@ pub trait RewardCalcTracer: Fn(&RewardCalculationEvent) + Send + Sync {}
 
 impl<T: Fn(&RewardCalculationEvent) + Send + Sync> RewardCalcTracer for T {}
 
-fn null_tracer() -> Option<impl RewardCalcTracer> {
+pub fn null_tracer() -> Option<impl RewardCalcTracer> {
     None::<fn(&RewardCalculationEvent)>
 }
 
@@ -1641,7 +1641,7 @@ impl Bank {
     }
 
     /// process for the start of a new epoch
-    fn process_new_epoch(
+    pub fn process_new_epoch(
         &mut self,
         parent_epoch: Epoch,
         parent_slot: Slot,
@@ -2370,7 +2370,7 @@ impl Bank {
         });
     }
 
-    fn update_stake_history(&self, epoch: Option<Epoch>) {
+    pub fn update_stake_history(&self, epoch: Option<Epoch>) {
         if epoch == Some(self.epoch()) {
             return;
         }
