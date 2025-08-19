@@ -2370,7 +2370,7 @@ impl Bank {
         });
     }
 
-    fn update_stake_history(&self, epoch: Option<Epoch>) {
+    pub fn update_stake_history(&self, epoch: Option<Epoch>) {
         if epoch == Some(self.epoch()) {
             return;
         }
