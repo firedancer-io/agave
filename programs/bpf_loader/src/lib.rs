@@ -51,8 +51,85 @@ const DEPRECATED_LOADER_COMPUTE_UNITS: u64 = 1_140;
 #[cfg_attr(feature = "svm-internal", qualifiers(pub))]
 const UPGRADEABLE_LOADER_COMPUTE_UNITS: u64 = 2_370;
 
+const MAX_MEMORY_LOG_LENGTH: usize = 64;
+const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+const FNV_PRIME: u64 = 0x100000001b3;
+
 thread_local! {
     pub static MEMORY_POOL: RefCell<VmMemoryPool> = RefCell::new(VmMemoryPool::new());
+
+    static MEMORY_LOG_LENGTH: RefCell<usize> = RefCell::new(0);
+    static MEMORY_LOG: RefCell<[u64; MAX_MEMORY_LOG_LENGTH]> = RefCell::new([0; MAX_MEMORY_LOG_LENGTH]);
+}
+
+fn fnv1a_hash(data: &[u8]) -> u64 {
+    let mut hash: u64 = FNV_OFFSET_BASIS;
+    let prime: u64 = FNV_PRIME;
+
+    for byte in data {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(prime);
+    }
+
+    hash
+}
+
+fn hash_vm_memory(mem: &MemoryMapping) -> u64 {
+    let regions = mem.get_regions();
+    let mut regions_ref = regions.iter().collect::<Vec<&MemoryRegion>>();
+    regions_ref.sort_by(|a, b| a.vm_addr.cmp(&b.vm_addr));
+
+    let mut hash: u64 = 0;
+    for region in regions {
+        if region.len == 0 {
+            continue;
+        }
+
+        let host_addr = mem
+            .map(AccessType::Load, region.vm_addr, region.len)
+            .unwrap() as *const u8;
+        unsafe {
+            let slice = std::slice::from_raw_parts(host_addr, region.len as usize);
+            hash ^= fnv1a_hash(slice);
+        }
+    }
+
+    hash
+}
+
+fn update_memory_log(hash: u64) {
+    MEMORY_LOG_LENGTH.with(|mem_len| {
+        let mut mem_len = mem_len.borrow_mut();
+
+        MEMORY_LOG.with(|mem_log| {
+            let mut mem_log = mem_log.borrow_mut();
+
+            if *mem_len >= MAX_MEMORY_LOG_LENGTH {
+                *mem_len = 0;
+            }
+
+            mem_log[*mem_len] = hash;
+            *mem_len += 1;
+        });
+    });
+}
+
+#[no_mangle]
+pub fn sol_compat_get_memory_log() -> Vec<u64> {
+    MEMORY_LOG_LENGTH.with(|mem_len| {
+        MEMORY_LOG.with(|mem_log| {
+            let mem_len = *mem_len.borrow();
+            let mem_log = mem_log.borrow();
+            mem_log[..mem_len].to_vec()
+        })
+    })
+}
+
+#[no_mangle]
+pub fn sol_compat_reset_memory_log() {
+    MEMORY_LOG_LENGTH.with(|mem_len| {
+        *mem_len.borrow_mut() = 0;
+    });
 }
 
 fn morph_into_deployment_environment_v1(
@@ -1509,6 +1586,8 @@ fn execute<'a, 'b: 'a>(
         vm.context_object_pointer.execute_time = Some(Measure::start("execute"));
         vm.registers[1] = ebpf::MM_INPUT_START;
         let (compute_units_consumed, result) = vm.execute_program(executable, !use_jit);
+        let mem_hash = hash_vm_memory(&vm.memory_mapping);
+        update_memory_log(mem_hash);
         MEMORY_POOL.with_borrow_mut(|memory_pool| {
             memory_pool.put_stack(stack);
             memory_pool.put_heap(heap);
