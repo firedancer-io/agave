@@ -4495,13 +4495,13 @@ impl Bank {
                     &feature_set.runtime_features(),
                     &compute_budget,
                     false, /* deployment */
-                    false, /* debugging_features */
+                    std::env::var("ENABLE_VM_TRACING").is_ok(), /* debugging_features */
                 )
                 .unwrap(),
             ),
             program_runtime_v2: Arc::new(create_program_runtime_environment_v2(
                 &compute_budget,
-                false, /* debugging_features */
+                std::env::var("ENABLE_VM_TRACING").is_ok(), /* debugging_features */
             )),
         }
     }
