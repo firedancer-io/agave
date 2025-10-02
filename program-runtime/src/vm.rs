@@ -10,6 +10,8 @@ use {
         mem_pool::VmMemoryPool,
         serialization, stable_log,
     },
+    cfg_if::cfg_if,
+    solana_sbpf::static_analysis::Analysis,
     solana_instruction::error::InstructionError,
     solana_program_entrypoint::{MAX_PERMITTED_DATA_INCREASE, SUCCESS},
     solana_sbpf::{
@@ -264,6 +266,12 @@ pub fn execute<'a, 'b: 'a>(
         }
         let (compute_units_consumed, result) = vm.execute_program(executable, &mut execution_mode);
         let register_trace = std::mem::take(&mut vm.register_trace);
+        if std::env::var("ENABLE_VM_TRACING").is_ok() {
+            let analysis = Analysis::from_executable(executable).unwrap();
+            analysis
+                .disassemble_register_trace(&mut std::io::stdout(), &register_trace)
+                .unwrap();
+        }
         MEMORY_POOL.with_borrow_mut(|memory_pool| {
             memory_pool.put_stack(stack);
             memory_pool.put_heap(heap);

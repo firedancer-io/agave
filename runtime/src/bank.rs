@@ -4502,7 +4502,7 @@ impl Bank {
             &feature_set.runtime_features(),
             &compute_budget,
             false, /* deployment */
-            false, /* debugging_features */
+            std::env::var("ENABLE_VM_TRACING").is_ok(), /* debugging_features */
         )
         .unwrap()
     }
