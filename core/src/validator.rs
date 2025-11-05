@@ -228,6 +228,7 @@ pub struct GeneratorConfig {
 
 pub struct ValidatorConfig {
     pub halt_at_slot: Option<Slot>,
+    pub repair_slot: Option<Slot>,
     pub expected_genesis_hash: Option<Hash>,
     pub expected_bank_hash: Option<Hash>,
     pub expected_shred_version: Option<u16>,
@@ -246,7 +247,7 @@ pub struct ValidatorConfig {
     pub broadcast_stage_type: BroadcastStageType,
     pub turbine_disabled: Arc<AtomicBool>,
     pub fixed_leader_schedule: Option<FixedSchedule>,
-    pub wait_for_supermajority: Option<Slot>,
+        pub wait_for_supermajority: Option<Slot>,
     pub new_hard_forks: Option<Vec<Slot>>,
     pub known_validators: Option<HashSet<Pubkey>>, // None = trust all
     pub repair_validators: Option<HashSet<Pubkey>>, // None = repair from all
@@ -309,6 +310,7 @@ impl ValidatorConfig {
             NonZeroUsize::new(num_cpus::get()).expect("thread count is non-zero");
 
         Self {
+            repair_slot: None,
             halt_at_slot: None,
             expected_genesis_hash: None,
             expected_bank_hash: None,
@@ -1568,6 +1570,7 @@ impl Validator {
             wen_restart_repair_slots.clone(),
             slot_status_notifier,
             vote_connection_cache,
+            config.repair_slot
         )
         .map_err(ValidatorError::Other)?;
 

@@ -74,6 +74,7 @@ pub struct RunArgs {
     pub blockstore_options: BlockstoreOptions,
     pub json_rpc_config: JsonRpcConfig,
     pub pub_sub_config: PubSubConfig,
+    pub repair_slot: Option<u64>,
 }
 
 impl FromClapArgMatches for RunArgs {
@@ -113,6 +114,8 @@ impl FromClapArgMatches for RunArgs {
 
         let socket_addr_space = SocketAddrSpace::new(matches.is_present("allow_private_addr"));
 
+        let repair_slot: Option<u64> = matches.value_of("repair_slot").map(|s| s.parse().unwrap());
+
         Ok(RunArgs {
             identity_keypair,
             logfile,
@@ -123,6 +126,7 @@ impl FromClapArgMatches for RunArgs {
             blockstore_options: BlockstoreOptions::from_clap_arg_match(matches)?,
             json_rpc_config: JsonRpcConfig::from_clap_arg_match(matches)?,
             pub_sub_config: PubSubConfig::from_clap_arg_match(matches)?,
+            repair_slot,
         })
     }
 }
@@ -1687,6 +1691,14 @@ pub fn add_args<'a>(app: App<'a, 'a>, default_args: &'a DefaultArgs) -> App<'a, 
                  set,tpu-client-next is used by default.",
             ),
     )
+    .arg(
+        Arg::with_name("repair_slot" )
+            .long("repair-slot")
+            .value_name("SLOT")
+            .takes_value(true)
+            .validator(is_parsable::<u64>)
+            .help("Repair up to the given slot"),
+    )
 }
 
 fn validators_set(
@@ -1753,6 +1765,7 @@ mod tests {
                         solana_rpc::rpc_pubsub_service::DEFAULT_QUEUE_CAPACITY_ITEMS,
                     ..PubSubConfig::default_for_tests()
                 },
+                repair_slot: None,
             }
         }
     }
@@ -1769,6 +1782,7 @@ mod tests {
                 blockstore_options: self.blockstore_options.clone(),
                 json_rpc_config: self.json_rpc_config.clone(),
                 pub_sub_config: self.pub_sub_config.clone(),
+                repair_slot: self.repair_slot,
             }
         }
     }
