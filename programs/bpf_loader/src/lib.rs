@@ -1531,8 +1531,9 @@ fn execute<'a, 'b: 'a>(
         let register_trace = std::mem::take(&mut vm.register_trace);
         if std::env::var("ENABLE_VM_TRACING").is_ok() {
             let analysis = Analysis::from_executable(executable).unwrap();
-            let trace_log = vm.context_object_pointer.syscall_context.last().unwrap().as_ref().unwrap().trace_log.clone();
-            analysis.disassemble_trace_log(&mut std::io::stdout(), &trace_log).unwrap();
+            analysis
+                .disassemble_register_trace(&mut std::io::stdout(), &register_trace)
+                .unwrap();
         }
         MEMORY_POOL.with_borrow_mut(|memory_pool| {
             memory_pool.put_stack(stack);
