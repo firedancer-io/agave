@@ -173,6 +173,7 @@ impl Tvu {
         wen_restart_repair_slots: Option<Arc<RwLock<Vec<Slot>>>>,
         slot_status_notifier: Option<SlotStatusNotifier>,
         vote_connection_cache: Arc<ConnectionCache>,
+        repair_slot: Option<Slot>
     ) -> Result<Self, String> {
         let in_wen_restart = wen_restart_repair_slots.is_some();
 
@@ -253,6 +254,7 @@ impl Tvu {
                 cluster_info: cluster_info.clone(),
                 cluster_slots: cluster_slots.clone(),
                 wen_restart_repair_slots,
+                repair_slot
             };
             let repair_service_channels = RepairServiceChannels::new(
                 repair_request_quic_sender,

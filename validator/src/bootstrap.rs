@@ -832,7 +832,7 @@ fn get_peer_snapshot_hashes(
             &mut peer_snapshot_hashes,
         );
     }
-    if incremental_snapshot_fetch {
+    if false {
         // Only filter by highest incremental snapshot slot if we're actually going to download an
         // incremental snapshot.  Otherwise this could remove higher full snapshot slots from
         // being selected.  For example, if there are two peer snapshot hashes:
@@ -1117,14 +1117,7 @@ fn download_snapshots(
         .incremental_snapshot_archives_dir;
 
     // If the local snapshots are new enough, then use 'em; no need to download new snapshots
-    if should_use_local_snapshot(
-        full_snapshot_archives_dir,
-        incremental_snapshot_archives_dir,
-        maximum_local_snapshot_age,
-        full_snapshot_hash,
-        incremental_snapshot_hash,
-        bootstrap_config.incremental_snapshot_fetch,
-    ) {
+    if true {
         return Ok(());
     }
 
@@ -1155,7 +1148,7 @@ fn download_snapshots(
         )?;
     }
 
-    if bootstrap_config.incremental_snapshot_fetch {
+    if false {
         // Check and see if we've already got the incremental snapshot; if not, download it
         if let Some(incremental_snapshot_hash) = incremental_snapshot_hash {
             if snapshot_utils::get_incremental_snapshot_archives(incremental_snapshot_archives_dir)

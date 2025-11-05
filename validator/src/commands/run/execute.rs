@@ -559,7 +559,9 @@ pub fn execute(
         ))?;
     }
 
+    warn!("repair_slot set to {:?}", run_args.repair_slot);
     let mut validator_config = ValidatorConfig {
+        repair_slot: run_args.repair_slot,
         require_tower: matches.is_present("require_tower"),
         tower_storage,
         halt_at_slot: value_t!(matches, "dev_halt_at_slot", Slot).ok(),

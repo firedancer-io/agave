@@ -2358,7 +2358,7 @@ pub fn purge_old_snapshot_archives(
         num_to_retain,
     );
 
-    let (full_snapshot_archives_to_retain, full_snapshot_archives_to_remove) =
+    let (full_snapshot_archives_to_retain, _full_snapshot_archives_to_remove) =
         if full_snapshot_archives.is_empty() {
             None
         } else {
@@ -2371,19 +2371,19 @@ pub fn purge_old_snapshot_archives(
         .map(|ai| ai.slot())
         .collect::<HashSet<_>>();
 
-    fn remove_archives<T: SnapshotArchiveInfoGetter>(archives: &[T]) {
-        for path in archives.iter().map(|a| a.path()) {
-            trace!("Removing snapshot archive: {}", path.display());
-            let result = fs::remove_file(path);
-            if let Err(err) = result {
-                info!(
-                    "Failed to remove snapshot archive '{}': {err}",
-                    path.display()
-                );
-            }
-        }
-    }
-    remove_archives(full_snapshot_archives_to_remove);
+    // fn remove_archives<T: SnapshotArchiveInfoGetter>(archives: &[T]) {
+    //     for path in archives.iter().map(|a| a.path()) {
+    //         trace!("Removing snapshot archive: {}", path.display());
+    //         let result = fs::remove_file(path);
+    //         if let Err(err) = result {
+    //             info!(
+    //                 "Failed to remove snapshot archive '{}': {err}",
+    //                 path.display()
+    //             );
+    //         }
+    //     }
+    // }
+    // remove_archives(full_snapshot_archives_to_remove);
 
     info!(
         "Purging old incremental snapshot archives in {}, retaining up to {} incremental snapshots",
@@ -2423,7 +2423,7 @@ pub fn purge_old_snapshot_archives(
                 .len()
                 .saturating_sub(num_to_retain),
         );
-        remove_archives(&incremental_snapshot_archives);
+        // remove_archives(&incremental_snapshot_archives);
     }
 }
 

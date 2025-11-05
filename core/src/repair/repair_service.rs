@@ -13,8 +13,7 @@ use {
             outstanding_requests::OutstandingRequests,
             repair_weight::RepairWeight,
             serve_repair::{
-                self, RepairPeers, RepairProtocol, RepairRequestHeader, ServeRepair,
-                ShredRepairType, REPAIR_PEERS_CACHE_CAPACITY,
+                self, REPAIR_PEERS_CACHE_CAPACITY, RepairPeers, RepairProtocol, RepairRequestHeader, ServeRepair, ShredRepairType
             },
         },
     },
@@ -23,7 +22,7 @@ use {
     lru::LruCache,
     rand::seq::SliceRandom,
     solana_client::connection_cache::Protocol,
-    solana_clock::{Slot, DEFAULT_TICKS_PER_SECOND, MS_PER_TICK},
+    solana_clock::{DEFAULT_TICKS_PER_SECOND, MS_PER_TICK, Slot},
     solana_epoch_schedule::EpochSchedule,
     solana_gossip::cluster_info::ClusterInfo,
     solana_hash::Hash,
@@ -37,18 +36,17 @@ use {
         bank::Bank,
         bank_forks::{BankForks, SharableBank},
     },
-    solana_streamer::sendmmsg::{batch_send, SendPktsError},
+    solana_streamer::sendmmsg::{SendPktsError, batch_send},
     solana_time_utils::timestamp,
     std::{
-        collections::{hash_map::Entry, HashMap, HashSet},
+        collections::{HashMap, HashSet, hash_map::Entry},
         iter::Iterator,
         net::{SocketAddr, UdpSocket},
         sync::{
-            atomic::{AtomicBool, Ordering},
-            Arc, RwLock,
+            Arc, RwLock, atomic::{AtomicBool, Ordering}
         },
-        thread::{self, sleep, Builder, JoinHandle},
-        time::{Duration, Instant},
+        thread::{self, Builder, JoinHandle, sleep},
+        time::{Duration, Instant, SystemTime},
     },
     tokio::sync::mpsc::Sender as AsyncSender,
 };
@@ -365,6 +363,7 @@ pub struct RepairInfo {
     pub repair_whitelist: Arc<RwLock<HashSet<Pubkey>>>,
     // A given list of slots to repair when in wen_restart
     pub wen_restart_repair_slots: Option<Arc<RwLock<Vec<Slot>>>>,
+    pub repair_slot: Option<Slot>,
 }
 
 pub struct RepairSlotRange {
@@ -445,6 +444,7 @@ impl RepairService {
         outstanding_requests: Arc<RwLock<OutstandingShredRepairs>>,
         repair_service_channels: RepairServiceChannels,
     ) -> Self {
+        warn!("repairing to slot {:?}", repair_info.repair_slot);
         let t_repair = {
             let blockstore = blockstore.clone();
             let exit = exit.clone();
@@ -770,6 +770,14 @@ impl RepairService {
             outstanding_repairs: HashMap::new(),
         };
 
+        // warn!(
+        //     "RepairService: starting repair cursor at slot {} with meta {:?}",
+        //     root_bank_slot, blockstore.meta(root_bank_slot)
+        // );
+        let ts = SystemTime::now();
+        let start = root_bank_slot;
+        let end = repair_info.repair_slot;
+        let mut cursor = root_bank_slot + 1;
         while !exit.load(Ordering::Relaxed) {
             Self::run_repair_iteration(
                 blockstore.as_ref(),
@@ -779,6 +787,25 @@ impl RepairService {
                 outstanding_requests,
                 repair_socket,
             );
+            if let Some(slot_meta) = blockstore.meta(cursor).unwrap() {
+                if slot_meta.is_full() {
+                    // warn!(
+                    //     "RepairService: repaired slot {} with meta {:?}",
+                    //     cursor, slot_meta
+                    // );
+                    if cursor == end.unwrap_or(0) {
+                        panic!( "RepairService: repaired {:?} slots in {:?}. start: {:?}. end: {:?}", end.unwrap() - start, SystemTime::now().duration_since( ts ), start, end.unwrap() );
+                    }
+                    if slot_meta.next_slots.len() > 1 {
+                        panic!(
+                            "RepairService: cursor slot {} has multiple next slots {:?}",
+                            cursor, slot_meta.next_slots
+                        );
+                    } else if slot_meta.next_slots.len() == 1 {
+                        cursor = slot_meta.next_slots[0];
+                    }
+                }
+            }
             repair_tracker.repair_metrics.maybe_report();
             sleep(Duration::from_millis(REPAIR_MS));
         }
