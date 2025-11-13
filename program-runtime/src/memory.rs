@@ -7,7 +7,7 @@ use {
 };
 
 /// Error types for memory translation operations.
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[derive(Debug, thiserror::Error, PartialEq, Eq, Clone)]
 pub enum MemoryTranslationError {
     #[error("Unaligned pointer")]
     UnalignedPointer,
