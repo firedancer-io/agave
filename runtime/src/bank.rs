@@ -433,14 +433,14 @@ const MAINNET_TIP_ACCOUNTS1: [Pubkey; 8] = [
     pubkey!("Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY"),
 ];
 const TESTNET_TIP_ACCOUNTS1: [Pubkey; 8] = [
-    pubkey!("4xgEmT58RwTNsF5xm2RMYCnR1EVukdK8a1i2qFjnJFu3"),
-    pubkey!("aTtUk2DHgLhKZRDjePq6eiHRKC1XXFMBiSUfQ2JNDbN"),
-    pubkey!("9ttgPBBhRYFuQccdR1DSnb7hydsWANoDsV3P9kaGMCEh"),
-    pubkey!("EoW3SUQap7ZeynXQ2QJ847aerhxbPVr843uMeTfc9dxM"),
-    pubkey!("B1mrQSpdeMU9gCvkJ6VsXVVoYjRGkNA7TtjMyqxrhecH"),
-    pubkey!("E2eSqe33tuhAHKTrwky5uEjaVqnb2T9ns6nHHUrN8588"),
-    pubkey!("9n3d1K5YD2vECAbRFhFFGYNNjiXtHXJWn9F31t89vsAV"),
-    pubkey!("ARTtviJkLLt6cHGQDydfo1Wyk6M4VGZdKZ2ZhdnJL336"),
+    pubkey!("BkMx5bRzQeP6tUZgzEs3xeDWJfQiLYvNDqSgmGZKYJDq"),
+    pubkey!("CwWZzvRgmxj9WLLhdoWUVrHZ1J8db3w2iptKuAitHqoC"),
+    pubkey!("4uRnem4BfVpZBv7kShVxUYtcipscgZMSHi3B9CSL6gAA"),
+    pubkey!("AzfhMPcx3qjbvCK3UUy868qmc5L451W341cpFqdL3EBe"),
+    pubkey!("84DrGKhycCUGfLzw8hXsUYX9SnWdh2wW3ozsTPrC5xyg"),
+    pubkey!("7aewvu8fMf1DK4fKoMXKfs3h3wpAQ7r7D8T1C71LmMF"),
+    pubkey!("G2d63CEgKBdgtpYT2BuheYQ9HFuFCenuHLNyKVpqAuSD"),
+    pubkey!("F7ThiQUBYiEcyaxpmMuUeACdoiSLKg4SZZ8JSfpFNwAf"),
 ];
 
 use mockall::lazy_static;
