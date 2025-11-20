@@ -89,15 +89,7 @@ impl PohRecorder {
 
         let (leader_first_tick_height, _, _) = crate::old_poh_recorder::PohRecorder::compute_leader_slot_tick_heights(next_leader_slot, ticks_per_slot);
 
-        const TARGET_SLOT_ADJUSTMENT_NS: u64 = 50_000_000;
-        let adjustment_per_tick: u64 = if ticks_per_slot > 0 {
-            TARGET_SLOT_ADJUSTMENT_NS / ticks_per_slot
-        } else {
-            0
-        };
-
         let target_tick_duration_nanos: u64 = poh_config.target_tick_duration.as_nanos().try_into().unwrap();
-        let target_tick_duration_nanos: u64 = target_tick_duration_nanos.saturating_sub(adjustment_per_tick);
 
         unsafe { fd_ext_poh_initialize(target_tick_duration_nanos, poh_config.hashes_per_tick.unwrap_or(1), ticks_per_slot, tick_height, last_entry_hash.as_ref().as_ptr(), clear_bank_sender as *mut c_void) };
 
