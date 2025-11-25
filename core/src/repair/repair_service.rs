@@ -40,6 +40,7 @@ use {
     solana_time_utils::timestamp,
     std::{
         collections::{HashMap, HashSet, hash_map::Entry},
+        io::{self, Read},
         iter::Iterator,
         net::{SocketAddr, UdpSocket},
         sync::{
@@ -774,6 +775,8 @@ impl RepairService {
         //     "RepairService: starting repair cursor at slot {} with meta {:?}",
         //     root_bank_slot, blockstore.meta(root_bank_slot)
         // );
+        println!("Press enter to start repairing...");
+        let _ = io::stdin().read(&mut [0u8]);
         let ts = SystemTime::now();
         let start = root_bank_slot;
         let end = repair_info.repair_slot;
