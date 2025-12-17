@@ -48,12 +48,9 @@ pub extern "C" fn fd_ext_poh_register_tick( bank: *const c_void, hash: *const u8
     unsafe { (*(bank as *const Bank)).register_tick(&hash, &BankWithScheduler::no_scheduler_available()) };
 }
 
-const FD_POH_RECORDER_FEATURES_OF_INTEREST_CNT: usize = 4usize;
+const FD_POH_RECORDER_FEATURES_OF_INTEREST_CNT: usize = 1usize;
 static FD_POH_RECORDER_FEATURES_OF_INTEREST: [Pubkey; FD_POH_RECORDER_FEATURES_OF_INTEREST_CNT] = [
-    agave_feature_set::disable_turbine_fanout_experiments::id(),
-    agave_feature_set::enable_turbine_extended_fanout_experiments::id(),
-    agave_feature_set::enable_vote_address_leader_schedule::id(),
-    agave_feature_set::drop_unchained_merkle_shreds::id(),
+    agave_feature_set::switch_to_chacha8_turbine::id(),
 ];
 
 pub struct PohRecorder {
