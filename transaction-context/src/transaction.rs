@@ -305,7 +305,7 @@ impl<'ix_data> TransactionContext<'ix_data> {
     }
 
     /// For tests only
-    fn deduplicate_accounts_for_tests(instruction_accounts: &[InstructionAccount]) -> Vec<u16> {
+    pub fn deduplicate_accounts_for_tests(instruction_accounts: &[InstructionAccount]) -> Vec<u16> {
         let mut dedup_map = vec![u16::MAX; MAX_ACCOUNTS_PER_TRANSACTION];
         for (idx, account) in instruction_accounts.iter().enumerate() {
             let index_in_instruction = dedup_map
