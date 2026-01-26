@@ -23,9 +23,13 @@ pub struct StandardBroadcastRun {
     slot: Slot,
     parent: Slot,
     chained_merkle_root: Hash,
+    duplicate_merkle_root: Hash, /* Used for duplicate block test */
+    is_duplicate: bool,
     carryover_entry: Option<WorkingBankEntry>,
     next_shred_index: u32,
+    dup_next_shred_index: u32,
     next_code_index: u32,
+    dup_next_code_index: u32,
     // If last_tick_height has reached bank.max_tick_height() for this slot
     // and so the slot is completed and all shreds are already broadcast.
     completed: bool,
@@ -55,9 +59,13 @@ impl StandardBroadcastRun {
             slot: Slot::MAX,
             parent: Slot::MAX,
             chained_merkle_root: Hash::default(),
+            duplicate_merkle_root: Hash::default(),
+            is_duplicate: false,
             carryover_entry: None,
             next_shred_index: 0,
+            dup_next_shred_index: 0,
             next_code_index: 0,
+            dup_next_code_index: 0,
             completed: true,
             process_shreds_stats: ProcessShredsStats::default(),
             transmit_shreds_stats: Arc::default(),
@@ -116,6 +124,7 @@ impl StandardBroadcastRun {
         max_data_shreds_per_slot: u32,
         max_code_shreds_per_slot: u32,
     ) -> std::result::Result<Vec<Shred>, BroadcastError> {
+        let is_duplicate = self.is_duplicate;
         let shreds: Vec<_> =
             Shredder::new(self.slot, self.parent, reference_tick, self.shred_version)
                 .unwrap()
@@ -123,23 +132,27 @@ impl StandardBroadcastRun {
                     keypair,
                     entries,
                     is_slot_end,
-                    self.chained_merkle_root,
-                    self.next_shred_index,
-                    self.next_code_index,
+                    if is_duplicate { self.duplicate_merkle_root } else { self.chained_merkle_root  },
+                    if is_duplicate { self.dup_next_shred_index  } else { self.next_shred_index },
+                    if is_duplicate { self.dup_next_code_index   } else { self.next_code_index },
                     &self.reed_solomon_cache,
                     process_stats,
                 )
                 .inspect(|shred| {
                     process_stats.record_shred(shred);
                     let next_index = match shred.shred_type() {
-                        ShredType::Code => &mut self.next_code_index,
-                        ShredType::Data => &mut self.next_shred_index,
+                        ShredType::Code => if is_duplicate { &mut self.dup_next_code_index } else { &mut self.next_code_index },
+                        ShredType::Data => if is_duplicate { &mut self.dup_next_shred_index } else { &mut self.next_shred_index },
                     };
                     *next_index = (*next_index).max(shred.index() + 1);
                 })
                 .collect();
         if let Some(shred) = shreds.iter().max_by_key(|shred| shred.fec_set_index()) {
-            self.chained_merkle_root = shred.merkle_root().unwrap();
+            if is_duplicate {
+                self.duplicate_merkle_root = shred.merkle_root().unwrap();
+            } else {
+                self.chained_merkle_root = shred.merkle_root().unwrap();
+            }
         }
         if self.next_shred_index > max_data_shreds_per_slot {
             return Err(BroadcastError::TooManyShreds);
@@ -254,6 +267,11 @@ impl StandardBroadcastRun {
             self.num_batches = 0;
             process_stats.receive_elapsed = 0;
             process_stats.coalesce_elapsed = 0;
+
+            self.dup_next_shred_index = 0u32;
+            self.dup_next_code_index = 0u32;
+            self.duplicate_merkle_root = chained_merkle_root;
+            self.is_duplicate = false;
         }
 
         // 2) Convert entries to shreds and coding shreds
@@ -263,6 +281,34 @@ impl StandardBroadcastRun {
         let reference_tick = last_tick_height
             .saturating_add(bank.ticks_per_slot())
             .saturating_sub(bank.max_tick_height());
+
+        /* every 100 slots, make a copy of the entries but don't put the vote transaction in the block */
+        let mut entries_without_vote = vec![];
+        let mut dup_shreds = vec![];
+        if bank.slot() % 66 == 0  && bank.slot() >= 200 {
+          self.is_duplicate = true;
+          for entry in &receive_results.entries {
+              if entry.transactions.len() > 0 {
+                println!("Slot {} has entry with txn that is getting removed to form a duplicate version: {:?}", self.slot, entry);
+                let mut entry_without_vote = entry.clone();
+                entry_without_vote.transactions.remove(0);
+                entries_without_vote.push(entry_without_vote);
+              } else {
+                entries_without_vote.push(entry.clone());
+              }
+          }
+          dup_shreds = self.entries_to_shreds(
+                keypair,
+                &entries_without_vote,
+                reference_tick as u8,
+                is_last_in_slot,
+                process_stats,
+                MAX_DATA_SHREDS_PER_SLOT as u32,
+                MAX_CODE_SHREDS_PER_SLOT as u32,
+            ).unwrap();
+        }
+
+        self.is_duplicate = false;
         let shreds = self
             .entries_to_shreds(
                 keypair,
@@ -299,6 +345,7 @@ impl StandardBroadcastRun {
         let mut get_leader_schedule_time = Measure::start("broadcast_get_leader_schedule");
         // Data and coding shreds are sent in a single batch.
         self.num_batches += 1;
+        if self.slot % 66 == 0 && self.slot >= 200 { self.num_batches += 1; }
         let num_expected_batches = is_last_in_slot.then_some(self.num_batches);
         let batch_info = Some(BroadcastShredBatchInfo {
             slot: bank.slot(),
@@ -313,7 +360,17 @@ impl StandardBroadcastRun {
         let shreds = Arc::new(shreds);
         debug_assert!(shreds.iter().all(|shred| shred.slot() == bank.slot()));
         socket_sender.send((shreds.clone(), batch_info.clone()))?;
-        blockstore_sender.send((shreds, batch_info))?;
+        if dup_shreds.len() > 0 {
+            println!("Slot {} sending duplicate shreds to turbine cnt: {}", self.slot, dup_shreds.len());
+            let dup_shreds_arc = Arc::new(dup_shreds.clone());
+            socket_sender.send((dup_shreds_arc, batch_info.clone()))?
+        };
+        blockstore_sender.send((shreds, batch_info.clone()))?;
+        if dup_shreds.len() > 0 {
+            println!("Slot {} sending duplicate shreds to blockstore cnt: {}", self.slot, dup_shreds.len());
+            let dup_shreds = Arc::new(dup_shreds);
+            blockstore_sender.send((dup_shreds, batch_info))?
+        }
 
         coding_send_time.stop();
 

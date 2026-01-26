@@ -1676,8 +1676,9 @@ impl Blockstore {
             }
         }
 
-        if !is_trusted {
+        if !is_trusted || Self::is_data_shred_present(&shred, slot_meta, index_meta.data()) {
             if Self::is_data_shred_present(&shred, slot_meta, index_meta.data()) {
+                println!("InsertDataShredError::Exists for slot {}, index {}", slot, shred.index());
                 duplicate_shreds.push(PossibleDuplicateShred::Exists(shred.into_owned()));
                 return Err(InsertDataShredError::Exists);
             }

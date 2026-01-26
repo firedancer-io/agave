@@ -111,13 +111,14 @@ fn run_check_duplicate(
 ) -> Result<()> {
     let mut root_bank = bank_forks.read().unwrap().root_bank();
     let mut last_updated = Instant::now();
-    let check_duplicate = |shred: PossibleDuplicateShred| -> Result<()> {
+    let mut check_duplicate = |shred: PossibleDuplicateShred| -> Result<()> {
         if last_updated.elapsed().as_millis() as u64 > DEFAULT_MS_PER_SLOT {
             // Grabs bank forks lock once a slot
             last_updated = Instant::now();
             root_bank = bank_forks.read().unwrap().root_bank();
         }
         let shred_slot = shred.slot();
+        println!("RUN CHECK DUPLICATE for shred slot {}", shred_slot);
         let chained_merkle_conflict_duplicate_proofs = cluster_nodes::check_feature_activation(
             &feature_set::chained_merkle_conflict_duplicate_proofs::id(),
             shred_slot,
@@ -171,6 +172,25 @@ fn run_check_duplicate(
 
         Ok(())
     };
+
+    let highest_slot = blockstore.highest_slot().unwrap_or( Some(0)).unwrap();
+    if highest_slot % 66 == 0 && highest_slot > 200 {
+        let mut payload = blockstore
+            .get_data_shreds_for_slot(highest_slot, 0)
+            .unwrap()[0].clone().into_payload();
+        // Obtain a mutable guard to the payload bytes and mutate through it.
+        {
+            let mut guard = payload.as_mut();
+            // Make a small, safe modification. Use a checked index to avoid panics in tests.
+            if guard.len() > 600 {
+                guard[500] ^= 0xFF;
+            }
+        }
+        // Reconstruct a Shred from the (potentially) modified serialized payload
+        check_duplicate(PossibleDuplicateShred::Exists(
+            Shred::new_from_serialized_shred(payload).expect("failed to reconstruct modified shred"),
+        ))?;
+    }
     const RECV_TIMEOUT: Duration = Duration::from_millis(200);
     std::iter::once(shred_receiver.recv_timeout(RECV_TIMEOUT)?)
         .chain(shred_receiver.try_iter())

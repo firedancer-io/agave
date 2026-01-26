@@ -956,6 +956,11 @@ impl ClusterInfo {
         shred: &Shred,
         other_payload: &[u8],
     ) -> Result<(), GossipError> {
+        println!(
+            "Gossiping duplicate shred msg for slot {}, index {}",
+            shred.slot(),
+            shred.index()
+        );
         self.gossip.push_duplicate_shred(
             &self.keypair(),
             shred,
