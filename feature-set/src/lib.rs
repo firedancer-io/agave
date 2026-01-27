@@ -19,6 +19,12 @@ use {
     std::sync::LazyLock,
 };
 
+/// Frequency (in slots) used by duplicate/evoc behavior across crates.
+pub const EQVOC_FREQUENCY: u64 = 33;
+/// Minimum slot to start applying evoc/duplicate behavior.
+pub const EQVOC_MIN_SLOT: u64 = 200;
+pub const SEND_GOSSIP_DUPS: bool = false;
+
 #[cfg_attr(feature = "frozen-abi", derive(solana_frozen_abi_macro::AbiExample))]
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct FeatureSet {

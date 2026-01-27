@@ -6,6 +6,7 @@ use {
         *,
     },
     crate::cluster_nodes::ClusterNodesCache,
+    agave_feature_set as feature_set,
     solana_entry::entry::Entry,
     solana_hash::Hash,
     solana_keypair::Keypair,
@@ -285,7 +286,7 @@ impl StandardBroadcastRun {
         /* every 100 slots, make a copy of the entries but don't put the vote transaction in the block */
         let mut entries_without_vote = vec![];
         let mut dup_shreds = vec![];
-        if bank.slot() % 66 == 0  && bank.slot() >= 200 {
+        if bank.slot() % feature_set::EQVOC_FREQUENCY == 0 && bank.slot() >= feature_set::EQVOC_MIN_SLOT {
           self.is_duplicate = true;
           for entry in &receive_results.entries {
               if entry.transactions.len() > 0 {
@@ -345,7 +346,7 @@ impl StandardBroadcastRun {
         let mut get_leader_schedule_time = Measure::start("broadcast_get_leader_schedule");
         // Data and coding shreds are sent in a single batch.
         self.num_batches += 1;
-        if self.slot % 66 == 0 && self.slot >= 200 { self.num_batches += 1; }
+        if self.slot % feature_set::EQVOC_FREQUENCY == 0 && self.slot >= feature_set::EQVOC_MIN_SLOT { self.num_batches += 1; }
         let num_expected_batches = is_last_in_slot.then_some(self.num_batches);
         let batch_info = Some(BroadcastShredBatchInfo {
             slot: bank.slot(),
@@ -359,12 +360,12 @@ impl StandardBroadcastRun {
 
         let shreds = Arc::new(shreds);
         debug_assert!(shreds.iter().all(|shred| shred.slot() == bank.slot()));
-        socket_sender.send((shreds.clone(), batch_info.clone()))?;
         if dup_shreds.len() > 0 {
             println!("Slot {} sending duplicate shreds to turbine cnt: {}", self.slot, dup_shreds.len());
             let dup_shreds_arc = Arc::new(dup_shreds.clone());
             socket_sender.send((dup_shreds_arc, batch_info.clone()))?
         };
+        socket_sender.send((shreds.clone(), batch_info.clone()))?;
         blockstore_sender.send((shreds, batch_info.clone()))?;
         if dup_shreds.len() > 0 {
             println!("Slot {} sending duplicate shreds to blockstore cnt: {}", self.slot, dup_shreds.len());

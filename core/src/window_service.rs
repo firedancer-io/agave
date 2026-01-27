@@ -174,7 +174,7 @@ fn run_check_duplicate(
     };
 
     let highest_slot = blockstore.highest_slot().unwrap_or( Some(0)).unwrap();
-    if highest_slot % 66 == 0 && highest_slot > 200 {
+    if feature_set::SEND_GOSSIP_DUPS && highest_slot % feature_set::EQVOC_FREQUENCY == 0 && highest_slot > feature_set::EQVOC_MIN_SLOT {
         let mut payload = blockstore
             .get_data_shreds_for_slot(highest_slot, 0)
             .unwrap()[0].clone().into_payload();
