@@ -3301,7 +3301,20 @@ impl ReplayStage {
                         }
                     }
                 } else {
-                    None
+                    // do some NYASTY stuff. Wait for the block_id to be Some before
+                    // proceeding. This can only happen for our leader bank.
+                    while blockstore.check_last_fec_set_and_get_block_id(
+                        bank.slot(),
+                        bank.hash(),
+                        &bank.feature_set,
+                       ).is_err() {
+                        warn!(
+                            "NASTY! fd currently is relying on gossiped vote txns to have the block_id. Since this is a Agave single leader cluster, we wait for block_id to be available for bank at slot {}",
+                            bank.slot()
+                        );
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                    }
+                    blockstore.check_last_fec_set_and_get_block_id(bank.slot(), bank.hash(), &bank.feature_set).unwrap_or(None)
                 };
                 bank.set_block_id(block_id);
                 // Freeze the bank before sending to any auxiliary threads
