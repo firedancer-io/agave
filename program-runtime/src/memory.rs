@@ -11,7 +11,7 @@ use {
 pub enum MemoryTranslationError {
     #[error("Unaligned pointer")]
     UnalignedPointer,
-    #[error("Invalid length")]
+    #[error("InvalidLength")]
     InvalidLength,
 }
 
