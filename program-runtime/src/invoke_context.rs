@@ -295,10 +295,10 @@ impl<'a, 'ix_data> InvokeContext<'a, 'ix_data> {
         instruction: Instruction,
         signers: &[Pubkey],
     ) -> Result<(), InstructionError> {
-        // We reference accounts by an u8 index, so we have a total of 256 accounts.
+        // We reference accounts by an u16 index, so we have a total of 65536 accounts.
         // This algorithm allocates the array on the stack for speed.
         // On AArch64 in release mode, this function only consumes 640 bytes of stack.
-        let mut transaction_callee_map: Vec<u8> = vec![u8::MAX; MAX_ACCOUNTS_PER_TRANSACTION];
+        let mut transaction_callee_map: Vec<u16> = vec![u16::MAX; MAX_ACCOUNTS_PER_TRANSACTION];
         let mut instruction_accounts: Vec<InstructionAccount> =
             Vec::with_capacity(instruction.accounts.len());
 
@@ -342,7 +342,7 @@ impl<'a, 'ix_data> InvokeContext<'a, 'ix_data> {
                     };
                     instruction_accounts.push(cloned_account);
                 } else {
-                    *index_in_callee = instruction_accounts.len() as u8;
+                    *index_in_callee = instruction_accounts.len() as u16;
                     instruction_accounts.push(InstructionAccount::new(
                         index_in_transaction,
                         account_meta.is_signer,
@@ -443,11 +443,11 @@ impl<'a, 'ix_data> InvokeContext<'a, 'ix_data> {
         program_account_index: IndexOfAccount,
         data: &'ix_data [u8],
     ) -> Result<(), InstructionError> {
-        // We reference accounts by an u8 index, so we have a total of 256 accounts.
+        // We reference accounts by an u16 index, so we have a total of 65536 accounts.
         // This algorithm allocates the array on the stack for speed.
         // On AArch64 in release mode, this function only consumes 464 bytes of stack (when it is
         // not inlined).
-        let mut transaction_callee_map: Vec<u8> = vec![u8::MAX; MAX_ACCOUNTS_PER_TRANSACTION];
+        let mut transaction_callee_map: Vec<u16> = vec![u16::MAX; MAX_ACCOUNTS_PER_TRANSACTION];
         debug_assert!(instruction.accounts.len() <= transaction_callee_map.len());
 
         let mut instruction_accounts: Vec<InstructionAccount> =
@@ -460,7 +460,7 @@ impl<'a, 'ix_data> InvokeContext<'a, 'ix_data> {
                 .unwrap();
 
             if (*index_in_callee as usize) > instruction_accounts.len() {
-                *index_in_callee = instruction_accounts.len() as u8;
+                *index_in_callee = instruction_accounts.len() as u16;
             }
 
             let index_in_transaction = *index_in_transaction as usize;
