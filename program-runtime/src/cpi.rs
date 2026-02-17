@@ -41,7 +41,7 @@ pub enum CpiError {
         num_accounts: u64,
         max_accounts: u64,
     },
-    #[error("Invoked an instruction with data that is too large ({data_len} > {max_data_len})")]
+    #[error("Invoked an instruction with data that is too large")]
     MaxInstructionDataLenExceeded { data_len: u64, max_data_len: u64 },
     #[error("Invoked an instruction with too many account info's")]
     MaxInstructionAccountInfosExceeded {
