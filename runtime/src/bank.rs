@@ -2934,6 +2934,10 @@ impl Bank {
         self.rent_collector.rent.burn_percent = burn_percent;
     }
 
+    pub fn set_rent_collector_rent(&mut self, rent: Rent) {
+        self.rent_collector.rent = rent;
+    }
+
     pub fn set_hashes_per_tick(&mut self, hashes_per_tick: Option<u64>) {
         self.hashes_per_tick = hashes_per_tick;
     }
