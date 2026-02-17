@@ -128,6 +128,7 @@ use {
         loaded_programs::{ProgramCacheEntry, ProgramRuntimeEnvironments},
     },
     solana_pubkey::{Pubkey, PubkeyHasherBuilder},
+    solana_rent::Rent,
     solana_runtime_transaction::{
         runtime_transaction::RuntimeTransaction, transaction_with_meta::TransactionWithMeta,
     },
@@ -2760,6 +2761,10 @@ impl Bank {
 
     pub fn set_rent_burn_percentage(&mut self, burn_percent: u8) {
         self.rent_collector.rent.burn_percent = burn_percent;
+    }
+
+    pub fn set_rent_collector_rent(&mut self, rent: Rent) {
+        self.rent_collector.rent = rent;
     }
 
     pub fn set_hashes_per_tick(&mut self, hashes_per_tick: Option<u64>) {
