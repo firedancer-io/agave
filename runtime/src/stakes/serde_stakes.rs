@@ -180,12 +180,24 @@ impl Serialize for SerdeStakeAccountMapToStakeFormat {
 /// deserialization without creating im::HashMap (such conversion is deferred until
 /// data is actually needed).
 #[derive(Clone, Debug, Deserialize)]
-pub(crate) struct DeserializableStakes<T> {
+pub struct DeserializableStakes<T> {
     pub vote_accounts: VoteAccounts,
     pub stake_delegations: Vec<(Pubkey, T)>,
     pub unused: u64,
     pub epoch: Epoch,
     pub stake_history: StakeHistory,
+}
+
+impl<T: Clone> From<Stakes<T>> for DeserializableStakes<T> {
+    fn from(stakes: Stakes<T>) -> Self {
+        DeserializableStakes {
+            vote_accounts: stakes.vote_accounts,
+            stake_delegations: stakes.stake_delegations.into_iter().collect(),
+            unused: stakes.unused,
+            epoch: stakes.epoch,
+            stake_history: stakes.stake_history,
+        }
+    }
 }
 
 #[cfg(test)]

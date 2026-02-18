@@ -2767,6 +2767,10 @@ impl Bank {
         self.rent_collector.rent = rent;
     }
 
+    pub fn set_leader_id_for_tests(&mut self, leader_id: Pubkey) {
+        self.leader_id = leader_id;
+    }
+
     pub fn set_hashes_per_tick(&mut self, hashes_per_tick: Option<u64>) {
         self.hashes_per_tick = hashes_per_tick;
     }

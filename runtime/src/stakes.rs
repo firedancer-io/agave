@@ -28,9 +28,8 @@ use {
 };
 
 mod serde_stakes;
-pub(crate) use serde_stakes::{
-    serialize_stake_accounts_to_delegation_format, DeserializableStakes, SerdeStakesToStakeFormat,
-};
+pub(crate) use serde_stakes::serialize_stake_accounts_to_delegation_format;
+pub use serde_stakes::{DeserializableStakes, SerdeStakesToStakeFormat};
 
 #[derive(Debug, Error)]
 pub enum Error {
