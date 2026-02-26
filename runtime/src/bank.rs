@@ -1698,6 +1698,90 @@ impl Bank {
         new
     }
 
+    pub fn new_for_txn_fuzzing(
+        bank_rc: BankRc,
+        fields: BankFieldsToDeserialize,
+        feature_set: FeatureSet,
+    ) -> Self {
+        let mut bank = Self {
+            rc: bank_rc,
+            status_cache: Arc::<RwLock<BankStatusCache>>::default(),
+            blockhash_queue: RwLock::new(fields.blockhash_queue),
+            ancestors: Ancestors::from(vec![fields.slot]),
+            hash: RwLock::new(fields.hash),
+            parent_hash: fields.parent_hash,
+            parent_slot: fields.parent_slot,
+            hard_forks: Arc::new(RwLock::new(fields.hard_forks)),
+            transaction_count: AtomicU64::new(fields.transaction_count),
+            non_vote_transaction_count_since_restart: AtomicU64::default(),
+            transaction_error_count: AtomicU64::default(),
+            transaction_entries_count: AtomicU64::default(),
+            transactions_per_entry_max: AtomicU64::default(),
+            tick_height: AtomicU64::new(fields.tick_height),
+            signature_count: AtomicU64::new(fields.signature_count),
+            capitalization: AtomicU64::new(fields.capitalization),
+            max_tick_height: fields.max_tick_height,
+            hashes_per_tick: fields.hashes_per_tick,
+            ticks_per_slot: fields.ticks_per_slot,
+            ns_per_slot: fields.ns_per_slot,
+            genesis_creation_time: fields.genesis_creation_time,
+            slots_per_year: fields.slots_per_year,
+            slot: fields.slot,
+            bank_id: 0,
+            epoch: fields.epoch,
+            block_height: fields.block_height,
+            collector_id: fields.collector_id,
+            collector_fees: AtomicU64::new(fields.collector_fees),
+            fee_rate_governor: fields.fee_rate_governor,
+            // clone()-ing is needed to consider a gated behavior in rent_collector
+            rent_collector: Self::get_rent_collector_from(&fields.rent_collector, fields.epoch),
+            epoch_schedule: fields.epoch_schedule,
+            inflation: Arc::new(RwLock::new(fields.inflation)),
+            stakes_cache: StakesCache::default(), /* Irrelevant for txn fuzzing */
+            epoch_stakes: fields.versioned_epoch_stakes, /* Contains a dummy entry */
+            is_delta: AtomicBool::new(fields.is_delta),
+            rewards: RwLock::new(vec![]),
+            cluster_type: Some(ClusterType::Development),
+            transaction_debug_keys: None, /* Irrelevant to txn execution */
+            transaction_log_collector_config: Arc::<RwLock<TransactionLogCollectorConfig>>::default(
+            ),
+            transaction_log_collector: Arc::<RwLock<TransactionLogCollector>>::default(),
+            feature_set: Arc::new(feature_set),
+            reserved_account_keys: Arc::<ReservedAccountKeys>::default(),
+            drop_callback: RwLock::new(OptionalDropCallback(None)),
+            freeze_started: AtomicBool::new(fields.hash != Hash::default()),
+            vote_only_bank: false,
+            cost_tracker: RwLock::new(CostTracker::default()),
+            accounts_data_size_initial: 0, /* Irrelevant to txn execution */
+            accounts_data_size_delta_on_chain: AtomicI64::new(0),
+            accounts_data_size_delta_off_chain: AtomicI64::new(0),
+            epoch_reward_status: EpochRewardStatus::default(),
+            transaction_processor: TransactionBatchProcessor::new_uninitialized(fields.slot, fields.epoch),
+            check_program_modification_slot: false,
+            // collector_fee_details is not serialized to snapshot
+            collector_fee_details: RwLock::new(CollectorFeeDetails::default()),
+            compute_budget: None, /* Set in transaction processor init */
+            transaction_account_lock_limit: None,
+            fee_structure: FeeStructure::default(),
+            #[cfg(feature = "dev-context-only-utils")]
+            hash_overrides: Arc::new(Mutex::new(HashOverrides::default())),
+            accounts_lt_hash: Mutex::new(fields.accounts_lt_hash),
+            cache_for_accounts_lt_hash: DashMap::default(),
+            stats_for_accounts_lt_hash: AccountsLtHashStats::default(),
+            block_id: RwLock::new(None),
+            bank_hash_stats: AtomicBankHashStats::new(&fields.bank_hash_stats),
+            epoch_rewards_calculation_cache: Arc::new(Mutex::new(HashMap::default())),
+        };
+
+        /* Apply activated features */
+        bank.apply_activated_features();
+
+        /* Initialize sysvar cache */
+        bank.transaction_processor.fill_missing_sysvar_cache_entries(&bank);
+
+        bank
+    }
+
     /// Create a bank from explicit arguments and deserialized fields from snapshot
     pub fn new_from_snapshot(
         bank_rc: BankRc,
