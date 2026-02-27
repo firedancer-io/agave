@@ -112,7 +112,7 @@ pub struct NodeVoteAccounts {
 /// Its bincode serializaiton format is identical as `VersionedEpochStakes`, but allows faster
 /// deserialization by storing stakes in [`DeserializableStakes`]).
 #[derive(Clone, Debug, Deserialize)]
-pub(crate) enum DeserializableVersionedEpochStakes {
+pub enum DeserializableVersionedEpochStakes {
     Current {
         stakes: DeserializableStakes<Stake>,
         total_stake: u64,

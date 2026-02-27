@@ -479,10 +479,10 @@ pub struct BankFieldsToDeserialize {
     pub rent_collector: RentCollector,
     pub epoch_schedule: EpochSchedule,
     pub inflation: Inflation,
-    pub(crate) stakes: DeserializableStakes<Delegation>,
+    pub stakes: DeserializableStakes<Delegation>,
     /// Transformed into `HashMap<Epoch, VersionedEpochStakes>` in `serde_snapshot` and passed to
     /// `Bank::new_from_snapshot` as separate parameter for performance (conversion is time consuming)
-    pub(crate) versioned_epoch_stakes: Vec<(Epoch, DeserializableVersionedEpochStakes)>,
+    pub versioned_epoch_stakes: Vec<(Epoch, DeserializableVersionedEpochStakes)>,
     pub is_delta: bool,
     pub accounts_data_len: u64,
     pub accounts_lt_hash: AccountsLtHash,
@@ -2143,6 +2143,10 @@ impl Bank {
 
     pub fn leader_id(&self) -> &Pubkey {
         &self.leader_id
+    }
+
+    pub fn set_leader_id_for_tests(&mut self, leader_id: Pubkey) {
+        self.leader_id = leader_id;
     }
 
     pub fn genesis_creation_time(&self) -> UnixTimestamp {
