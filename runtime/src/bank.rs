@@ -2216,6 +2216,10 @@ impl Bank {
         &self.leader.id
     }
 
+    pub fn set_leader_id_for_tests(&mut self, leader_id: Pubkey) {
+        self.leader_id = leader_id;
+    }
+
     pub fn genesis_creation_time(&self) -> UnixTimestamp {
         self.genesis_creation_time
     }
