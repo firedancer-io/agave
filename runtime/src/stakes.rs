@@ -28,7 +28,7 @@ use {
 };
 
 mod serde_stakes;
-pub(crate) use serde_stakes::{
+pub use serde_stakes::{
     DeserializableStakes, SerdeStakesToStakeFormat, serialize_stake_accounts_to_delegation_format,
 };
 
@@ -225,7 +225,7 @@ impl Stakes<StakeAccount> {
     /// full account state for respective stake pubkeys. get_account function
     /// should return the account at the respective slot where stakes where
     /// cached.
-    pub(crate) fn load_from_deserialized_delegations<F>(
+    pub fn load_from_deserialized_delegations<F>(
         stakes: DeserializableStakes<Delegation>,
         get_account: F,
     ) -> Result<Self, Error>
