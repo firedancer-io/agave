@@ -1936,6 +1936,145 @@ impl Bank {
         bank
     }
 
+    /// Create a bank for block fuzzing. Constructs the bank struct and
+    /// applies activated features. Call `prepare_for_block_execution` after
+    /// storing input accounts to complete the `_new_from_parent`-equivalent
+    /// initialization (epoch processing, sysvar updates, LT hash cache).
+    pub fn new_for_block_fuzzing(
+        bank_rc: BankRc,
+        fields: BankFieldsToDeserialize,
+        feature_set: FeatureSet,
+        epoch_stakes: HashMap<Epoch, VersionedEpochStakes>,
+        stakes: Stakes<crate::stake_account::StakeAccount<solana_stake_interface::state::Delegation>>,
+        accounts_data_size_initial: u64,
+    ) -> Self {
+        let mut bank = Self {
+            rc: bank_rc,
+            status_cache: Arc::<RwLock<BankStatusCache>>::default(),
+            blockhash_queue: RwLock::new(fields.blockhash_queue),
+            ancestors: Ancestors::from(vec![fields.slot]),
+            hash: RwLock::new(fields.hash),
+            parent_hash: fields.parent_hash,
+            parent_slot: fields.parent_slot,
+            hard_forks: Arc::new(RwLock::new(fields.hard_forks)),
+            transaction_count: AtomicU64::new(fields.transaction_count),
+            non_vote_transaction_count_since_restart: AtomicU64::default(),
+            transaction_error_count: AtomicU64::default(),
+            transaction_entries_count: AtomicU64::default(),
+            transactions_per_entry_max: AtomicU64::default(),
+            tick_height: AtomicU64::new(fields.tick_height),
+            signature_count: AtomicU64::new(fields.signature_count),
+            capitalization: AtomicU64::new(fields.capitalization),
+            max_tick_height: fields.max_tick_height,
+            hashes_per_tick: fields.hashes_per_tick,
+            ticks_per_slot: fields.ticks_per_slot,
+            ns_per_slot: fields.ns_per_slot,
+            genesis_creation_time: fields.genesis_creation_time,
+            slots_per_year: fields.slots_per_year,
+            slot: fields.slot,
+            bank_id: 0,
+            epoch: fields.epoch,
+            block_height: fields.block_height,
+            leader_id: fields.leader_id,
+            collector_fees: AtomicU64::new(fields.collector_fees),
+            fee_rate_governor: fields.fee_rate_governor,
+            rent_collector: Self::get_rent_collector_from(&fields.rent_collector, fields.epoch),
+            epoch_schedule: fields.epoch_schedule,
+            inflation: Arc::new(RwLock::new(fields.inflation)),
+            stakes_cache: StakesCache::new(stakes),
+            epoch_stakes,
+            is_delta: AtomicBool::new(fields.is_delta),
+            rewards: RwLock::new(vec![]),
+            cluster_type: Some(ClusterType::Development),
+            transaction_debug_keys: None,
+            transaction_log_collector_config: Arc::<RwLock<TransactionLogCollectorConfig>>::default(
+            ),
+            transaction_log_collector: Arc::<RwLock<TransactionLogCollector>>::default(),
+            feature_set: Arc::new(feature_set),
+            reserved_account_keys: Arc::<ReservedAccountKeys>::default(),
+            drop_callback: RwLock::new(OptionalDropCallback(None)),
+            freeze_started: AtomicBool::new(fields.hash != Hash::default()),
+            vote_only_bank: false,
+            cost_tracker: RwLock::new(CostTracker::default()),
+            accounts_data_size_initial,
+            accounts_data_size_delta_on_chain: AtomicI64::new(0),
+            accounts_data_size_delta_off_chain: AtomicI64::new(0),
+            epoch_reward_status: EpochRewardStatus::default(),
+            transaction_processor: TransactionBatchProcessor::new_uninitialized(fields.slot, fields.epoch),
+            check_program_deployment_slot: false,
+            collector_fee_details: RwLock::new(CollectorFeeDetails::default()),
+            compute_budget: None,
+            transaction_account_lock_limit: None,
+            fee_structure: FeeStructure::default(),
+            #[cfg(feature = "dev-context-only-utils")]
+            hash_overrides: Arc::new(Mutex::new(HashOverrides::default())),
+            accounts_lt_hash: Mutex::new(fields.accounts_lt_hash),
+            cache_for_accounts_lt_hash: DashMap::default(),
+            stats_for_accounts_lt_hash: AccountsLtHashStats::default(),
+            block_id: RwLock::new(None),
+            bank_hash_stats: AtomicBankHashStats::new(&fields.bank_hash_stats),
+            epoch_rewards_calculation_cache: Arc::new(Mutex::new(HashMap::default())),
+            expected_bank_hash: RwLock::new(None),
+        };
+
+        bank.apply_activated_features();
+        bank
+    }
+
+    /// Complete bank initialization for block fuzzing. Must be called after
+    /// input accounts have been stored in the bank. Mirrors the post-construction
+    /// sequence of `_new_from_parent`: epoch processing, sysvar updates, and
+    /// LT hash cache population.
+    pub fn prepare_for_block_execution(&mut self) {
+        let parent_epoch = self.epoch_schedule.get_epoch(self.parent_slot);
+        let slot = self.slot;
+
+        // If booting mid-distribution, recalculate reward partitions from the
+        // EpochRewards sysvar (mirrors initialize_after_snapshot_restore and
+        // FD's fd_rewards_recalculate_partitioned_rewards).
+        self.recalculate_partitioned_rewards_if_active(|| {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(1)
+                .build()
+                .expect("single-threaded rayon pool")
+        });
+
+        // Epoch boundary processing (mirrors _new_from_parent)
+        // process_new_epoch takes the PARENT's block_height (self.block_height - 1)
+        if parent_epoch < self.epoch {
+            self.process_new_epoch(
+                parent_epoch,
+                self.parent_slot,
+                self.block_height.saturating_sub(1),
+                null_tracer(),
+            );
+        } else {
+            let leader_schedule_epoch = self.epoch_schedule.get_leader_schedule_epoch(slot);
+            self.update_epoch_stakes(leader_schedule_epoch);
+        }
+        self.distribute_partitioned_epoch_rewards();
+
+        self.prepare_program_cache_for_upcoming_feature_set();
+
+        // Update sysvars before processing transactions (mirrors _new_from_parent)
+        self.update_slot_hashes();
+        self.update_stake_history(Some(parent_epoch));
+        self.update_clock(Some(parent_epoch));
+        self.update_last_restart_slot();
+
+        self.transaction_processor
+            .fill_missing_sysvar_cache_entries(self);
+
+        // Populate the LT hash cache (mirrors _new_from_parent)
+        let accounts_modified_this_slot =
+            self.rc.accounts.accounts_db.get_pubkeys_for_slot(slot);
+        for pubkey in accounts_modified_this_slot {
+            self.cache_for_accounts_lt_hash
+                .entry(pubkey)
+                .or_insert(AccountsLtHashCacheValue::BankNew);
+        }
+    }
+
     /// Create a bank from explicit arguments and deserialized fields from snapshot
     pub fn new_from_snapshot(
         bank_rc: BankRc,
