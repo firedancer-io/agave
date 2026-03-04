@@ -64,7 +64,7 @@ pub(crate) type PingCache = ping_pong::PingCache<GOSSIP_PING_TOKEN_SIZE>;
 
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
-pub(crate) struct PruneData {
+pub struct PruneData {
     /// Pubkey of the node that sent this prune data
     pub(crate) pubkey: Pubkey,
     /// Pubkeys of nodes that should be pruned
