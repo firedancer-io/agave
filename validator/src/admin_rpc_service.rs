@@ -47,6 +47,8 @@ use {
     tokio::runtime::Runtime,
 };
 
+pub(crate) static FIREDANCER_ADMIN_RPC: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 #[derive(Clone)]
 pub struct AdminRpcRequestMetadata {
     pub rpc_addr: Option<SocketAddr>,
@@ -289,6 +291,29 @@ pub trait AdminRpc {
 
     #[rpc(meta, name = "blockstorePurge")]
     fn blockstore_purge(&self, meta: Self::Metadata, maximum_purge_slot: Slot) -> Result<()>;
+}
+
+#[no_mangle]
+pub extern "C" fn fd_ext_admin_rpc_set_identity(identity_keypair: *const u8, require_tower: i32) -> i32 {
+    loop {
+        if FIREDANCER_ADMIN_RPC.load(std::sync::atomic::Ordering::Relaxed) != 0 {
+            break;
+        }
+        std::hint::spin_loop();
+    }
+    let metadata: &AdminRpcRequestMetadata = unsafe { (FIREDANCER_ADMIN_RPC.load(std::sync::atomic::Ordering::Acquire) as *const AdminRpcRequestMetadata).as_ref().unwrap() };
+
+    /* Cannot fail, already validated by the client */
+    let identity_keypair = unsafe { std::slice::from_raw_parts(identity_keypair, 64) };
+    let identity_keypair = Keypair::try_from(identity_keypair).unwrap();
+
+    match AdminRpcImpl::set_identity_keypair(metadata.clone(), identity_keypair, require_tower!=0) {
+        Ok(()) => 0,
+        Err(err) => {
+            error!("Failed to set identity keypair: {}", err);
+            -1
+        }
+    }
 }
 
 pub struct AdminRpcImpl;
@@ -556,36 +581,46 @@ impl AdminRpc for AdminRpcImpl {
 
     fn set_identity(
         &self,
-        meta: Self::Metadata,
-        keypair_file: String,
-        require_tower: bool,
+        _meta: Self::Metadata,
+        _keypair_file: String,
+        _require_tower: bool,
     ) -> Result<()> {
-        debug!("set_identity request received");
+        // FIREDANCER: Operator must use Firedancer set-identity command.
+        error!("`agave-validator set-identity` is not supported with Frankendancer. \
+                Please use `fdctl set-identity` to change the identity keypair");
+        Err(jsonrpc_core::error::Error::invalid_request())
 
-        let identity_keypair = read_keypair_file(&keypair_file).map_err(|err| {
-            jsonrpc_core::error::Error::invalid_params(format!(
-                "Failed to read identity keypair from {keypair_file}: {err}"
-            ))
-        })?;
+        // debug!("set_identity request received");
 
-        AdminRpcImpl::set_identity_keypair(meta, identity_keypair, require_tower)
+        // let identity_keypair = read_keypair_file(&keypair_file).map_err(|err| {
+        //     jsonrpc_core::error::Error::invalid_params(format!(
+        //         "Failed to read identity keypair from {keypair_file}: {err}"
+        //     ))
+        // })?;
+
+        // AdminRpcImpl::set_identity_keypair(meta, identity_keypair, require_tower)
     }
 
     fn set_identity_from_bytes(
         &self,
-        meta: Self::Metadata,
-        identity_keypair: Vec<u8>,
-        require_tower: bool,
+        _meta: Self::Metadata,
+        _identity_keypair: Vec<u8>,
+        _require_tower: bool,
     ) -> Result<()> {
-        debug!("set_identity_from_bytes request received");
+        // FIREDANCER: Operator must use Firedancer set-identity command.
+        error!("`agave-validator set-identity` is not supported with Frankendancer. \
+                Please use `fdctl set-identity` to change the identity keypair");
+        Err(jsonrpc_core::error::Error::invalid_request())
 
-        let identity_keypair = Keypair::try_from(identity_keypair.as_ref()).map_err(|err| {
-            jsonrpc_core::error::Error::invalid_params(format!(
-                "Failed to read identity keypair from provided byte array: {err}"
-            ))
-        })?;
+        // debug!("set_identity_from_bytes request received");
 
-        AdminRpcImpl::set_identity_keypair(meta, identity_keypair, require_tower)
+        // let identity_keypair = Keypair::try_from(identity_keypair.as_ref()).map_err(|err| {
+        //     jsonrpc_core::error::Error::invalid_params(format!(
+        //         "Failed to read identity keypair from provided byte array: {err}"
+        //     ))
+        // })?;
+
+        // AdminRpcImpl::set_identity_keypair(meta, identity_keypair, require_tower)
     }
 
     fn set_staked_nodes_overrides(&self, meta: Self::Metadata, path: String) -> Result<()> {
@@ -929,6 +964,13 @@ impl AdminRpcImpl {
 
 // Start the Admin RPC interface
 pub fn run(ledger_path: &Path, metadata: AdminRpcRequestMetadata) {
+    // FIREDANCER: Firedancer needs access to the Admin RPC interface so
+    // can change the identity key.
+    FIREDANCER_ADMIN_RPC.store(
+        Box::into_raw(Box::new(metadata.clone())) as *const AdminRpcRequestMetadata as u64,
+        std::sync::atomic::Ordering::Release,
+    );
+
     let admin_rpc_path = admin_rpc_path(ledger_path);
 
     let event_loop = tokio::runtime::Builder::new_multi_thread()
