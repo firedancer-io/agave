@@ -89,6 +89,10 @@ where
             commands::staked_nodes_overrides::execute(subcommand_matches, &ledger_path)
         }
         ("set-identity", Some(subcommand_matches)) => {
+            // FIREDANCER: Operator must use Firedancer set-identity command.
+            if true {
+                panic!("When running Frankendancer, identity can only be changed by running `fdctl set-identity`");
+            }
             commands::set_identity::execute(subcommand_matches, &ledger_path)
         }
         ("set-log-filter", Some(subcommand_matches)) => {
