@@ -3,7 +3,7 @@
 
 use {
     crate::{
-        admin_rpc_post_init::{KeyUpdaterType, KeyUpdaters},
+        admin_rpc_post_init::{/*KeyUpdaterType,*/ KeyUpdaters},
         banking_stage::{
             BankingControlMsg, BankingStage, BankingStageHandle,
             transaction_scheduler::scheduler_controller::SchedulerConfig,
@@ -49,9 +49,9 @@ use {
     solana_streamer::{
         quic::{
             SimpleQosQuicStreamerConfig, SpawnServerResult, SwQosQuicStreamerConfig,
-            spawn_simple_qos_server, spawn_stake_weighted_qos_server,
+            /*spawn_simple_qos_server, spawn_stake_weighted_qos_server,*/
         },
-        quic_socket::QuicSocket,
+        /*quic_socket::QuicSocket,*/
         streamer::StakedNodes,
     },
     solana_turbine::{
@@ -94,12 +94,13 @@ pub struct Tpu {
     banking_stage: BankingStageHandle,
     forwarding_stage: JoinHandle<()>,
     broadcast_stage: BroadcastStage,
-    tpu_quic_t: thread::JoinHandle<()>,
-    tpu_forwards_quic_t: thread::JoinHandle<()>,
+    // FIREDANCER: QUIC threads are disabled
+    // tpu_quic_t: thread::JoinHandle<()>,
+    // tpu_forwards_quic_t: thread::JoinHandle<()>,
     tpu_entry_notifier: Option<TpuEntryNotifier>,
     staked_nodes_updater_service: StakedNodesUpdaterService,
     tracer_thread_hdl: TracerThread,
-    tpu_vote_quic_t: thread::JoinHandle<()>,
+    // tpu_vote_quic_t: thread::JoinHandle<()>,
 }
 
 impl Tpu {
@@ -145,10 +146,10 @@ impl Tpu {
         filter_keys: Arc<HashSet<Pubkey>>,
         enable_block_production_forwarding: bool,
         _generator_config: Option<GeneratorConfig>, /* vestigial code for replay invalidator */
-        key_notifiers: Arc<RwLock<KeyUpdaters>>,
+        _key_notifiers: Arc<RwLock<KeyUpdaters>>,
         banking_control_receiver: mpsc::Receiver<BankingControlMsg>,
         scheduler_bindings: Option<(PathBuf, mpsc::Sender<BankingControlMsg>)>,
-        cancel: CancellationToken,
+        _cancel: CancellationToken,
         votor_event_sender: VotorEventSender,
     ) -> Self {
         let TpuSockets {
@@ -162,7 +163,7 @@ impl Tpu {
 
         let (packet_sender, packet_receiver) = bounded(TPU_CHANNEL_SIZE);
         let (vote_packet_sender, vote_packet_receiver) = unbounded();
-        let (forwarded_packet_sender, forwarded_packet_receiver) = unbounded();
+        let (_forwarded_packet_sender, forwarded_packet_receiver) = unbounded();
         let fetch_stage = FetchStage::new_with_sender(
             tpu_vote_sockets,
             exit.clone(),
@@ -189,73 +190,83 @@ impl Tpu {
             gossip_vote_receiver,
         } = banking_tracer_channels;
 
-        // Streamer for Votes:
-        let quic_vote_sockets: Vec<QuicSocket> =
-            tpu_vote_quic_sockets.into_iter().map(Into::into).collect();
-        let (
-            SpawnServerResult {
-                endpoints: _,
-                thread: tpu_vote_quic_t,
-                key_updater: vote_streamer_key_updater,
-            },
-            _banlist,
-        ) = spawn_simple_qos_server(
-            "solQuicTVo",
-            "quic_streamer_tpu_vote",
-            quic_vote_sockets,
-            keypair,
-            vote_packet_sender,
-            staked_nodes.clone(),
-            vote_quic_server_config.quic_streamer_config,
-            vote_quic_server_config.qos_config,
-            cancel.clone(),
-        )
-        .unwrap();
+        // FIREDANCER: Unused varaibles
+        let _ = keypair;
+        let _ = transactions_quic_sockets;
+        let _ = transactions_forwards_quic_sockets;
+        let _ = tpu_vote_quic_sockets;
+        let _ = tpu_quic_server_config;
+        let _ = tpu_fwd_quic_server_config;
+        let _ = vote_quic_server_config;
+        let _ = SpawnServerResult::from;
 
-        // Streamer for TPU
-        let transactions_quic_sockets: Vec<QuicSocket> = transactions_quic_sockets
-            .into_iter()
-            .map(Into::into)
-            .collect();
-        let SpawnServerResult {
-            endpoints: _,
-            thread: tpu_quic_t,
-            key_updater,
-        } = spawn_stake_weighted_qos_server(
-            "solQuicTpu",
-            "quic_streamer_tpu",
-            transactions_quic_sockets,
-            keypair,
-            packet_sender,
-            staked_nodes.clone(),
-            tpu_quic_server_config.quic_streamer_config,
-            tpu_quic_server_config.qos_config,
-            cancel.clone(),
-        )
-        .unwrap();
+        // // Streamer for Votes:
+        // let quic_vote_sockets: Vec<QuicSocket> =
+        //     tpu_vote_quic_sockets.into_iter().map(Into::into).collect();
+        // let (
+        //     SpawnServerResult {
+        //         endpoints: _,
+        //         thread: tpu_vote_quic_t,
+        //         key_updater: vote_streamer_key_updater,
+        //     },
+        //     _banlist,
+        // ) = spawn_simple_qos_server(
+        //     "solQuicTVo",
+        //     "quic_streamer_tpu_vote",
+        //     quic_vote_sockets,
+        //     keypair,
+        //     vote_packet_sender,
+        //     staked_nodes.clone(),
+        //     vote_quic_server_config.quic_streamer_config,
+        //     vote_quic_server_config.qos_config,
+        //     cancel.clone(),
+        // )
+        // .unwrap();
 
-        // Streamer for TPU forward
-        let transactions_forwards_quic_sockets: Vec<QuicSocket> =
-            transactions_forwards_quic_sockets
-                .into_iter()
-                .map(Into::into)
-                .collect();
-        let SpawnServerResult {
-            endpoints: _,
-            thread: tpu_forwards_quic_t,
-            key_updater: forwards_key_updater,
-        } = spawn_stake_weighted_qos_server(
-            "solQuicTpuFwd",
-            "quic_streamer_tpu_forwards",
-            transactions_forwards_quic_sockets,
-            keypair,
-            forwarded_packet_sender,
-            staked_nodes.clone(),
-            tpu_fwd_quic_server_config.quic_streamer_config,
-            tpu_fwd_quic_server_config.qos_config,
-            cancel,
-        )
-        .unwrap();
+        // // Streamer for TPU
+        // let transactions_quic_sockets: Vec<QuicSocket> = transactions_quic_sockets
+        //     .into_iter()
+        //     .map(Into::into)
+        //     .collect();
+        // let SpawnServerResult {
+        //     endpoints: _,
+        //     thread: tpu_quic_t,
+        //     key_updater,
+        // } = spawn_stake_weighted_qos_server(
+        //     "solQuicTpu",
+        //     "quic_streamer_tpu",
+        //     transactions_quic_sockets,
+        //     keypair,
+        //     packet_sender,
+        //     staked_nodes.clone(),
+        //     tpu_quic_server_config.quic_streamer_config,
+        //     tpu_quic_server_config.qos_config,
+        //     cancel.clone(),
+        // )
+        // .unwrap();
+
+        // // Streamer for TPU forward
+        // let transactions_forwards_quic_sockets: Vec<QuicSocket> =
+        //     transactions_forwards_quic_sockets
+        //         .into_iter()
+        //         .map(Into::into)
+        //         .collect();
+        // let SpawnServerResult {
+        //     endpoints: _,
+        //     thread: tpu_forwards_quic_t,
+        //     key_updater: forwards_key_updater,
+        // } = spawn_stake_weighted_qos_server(
+        //     "solQuicTpuFwd",
+        //     "quic_streamer_tpu_forwards",
+        //     transactions_forwards_quic_sockets,
+        //     keypair,
+        //     forwarded_packet_sender,
+        //     staked_nodes.clone(),
+        //     tpu_fwd_quic_server_config.quic_streamer_config,
+        //     tpu_fwd_quic_server_config.qos_config,
+        //     cancel,
+        // )
+        // .unwrap();
 
         let (forward_stage_sender, forward_stage_receiver) = bounded(50_000);
 
@@ -350,11 +361,12 @@ impl Tpu {
             votor_event_sender,
         );
 
-        let mut key_notifiers = key_notifiers.write().unwrap();
-        key_notifiers.add(KeyUpdaterType::Tpu, key_updater);
-        key_notifiers.add(KeyUpdaterType::TpuForwards, forwards_key_updater);
-        key_notifiers.add(KeyUpdaterType::TpuVote, vote_streamer_key_updater);
-        key_notifiers.add(KeyUpdaterType::Forward, client_updater);
+        // let mut key_notifiers = key_notifiers.write().unwrap();
+        // key_notifiers.add(KeyUpdaterType::Tpu, key_updater);
+        // key_notifiers.add(KeyUpdaterType::TpuForwards, forwards_key_updater);
+        // key_notifiers.add(KeyUpdaterType::TpuVote, vote_streamer_key_updater);
+        // key_notifiers.add(KeyUpdaterType::Forward, client_updater);
+        let _ = client_updater;
 
         Self {
             fetch_stage,
@@ -363,12 +375,13 @@ impl Tpu {
             banking_stage,
             forwarding_stage,
             broadcast_stage,
-            tpu_quic_t,
-            tpu_forwards_quic_t,
+            // FIREDANCER: QUIC threads are disabled
+            // tpu_quic_t,
+            // tpu_forwards_quic_t,
             tpu_entry_notifier,
             staked_nodes_updater_service,
             tracer_thread_hdl,
-            tpu_vote_quic_t,
+            // tpu_vote_quic_t,
         }
     }
 
@@ -380,9 +393,10 @@ impl Tpu {
             self.banking_stage.join(),
             self.forwarding_stage.join(),
             self.staked_nodes_updater_service.join(),
-            self.tpu_quic_t.join(),
-            self.tpu_forwards_quic_t.join(),
-            self.tpu_vote_quic_t.join(),
+            // FIREDANCER: QUIC threads are disabled
+            // self.tpu_quic_t.join(),
+            // self.tpu_forwards_quic_t.join(),
+            // self.tpu_vote_quic_t.join(),
         ];
         let broadcast_result = self.broadcast_stage.join();
         for result in results {
