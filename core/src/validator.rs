@@ -1692,7 +1692,9 @@ impl Validator {
                     Arc::as_ref(&identity_keypair),
                     node.sockets.rpc_sts_client,
                     runtime_handle.clone(),
-                    cancel.clone(),
+                    // FIREDANCER: a child token scopes tpu-client-next's self-cancel
+                    // so it can't cancel the shared parent token driving the BLS streamer.
+                    cancel.child_token(),
                 )
             };
             let rpc_svc_config = JsonRpcServiceConfig {
@@ -2140,7 +2142,9 @@ impl Validator {
                 stake_identity: Arc::as_ref(&identity_keypair),
                 tpu_client_sockets: tpu_transactions_forwards_client_sockets.take().unwrap(),
                 runtime_handle: runtime_handle.clone(),
-                cancel: cancel.clone(),
+                // FIREDANCER: a child token scopes tpu-client-next's self-cancel
+                // so it can't cancel the shared parent token driving the BLS streamer.
+                cancel: cancel.child_token(),
                 node_multihoming: node_multihoming.clone(),
             }
         };
