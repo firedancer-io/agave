@@ -82,7 +82,9 @@ pub unsafe extern "C" fn fd_ext_bank_execute_and_commit_bundle(bank: *const std:
     use solana_transaction::sanitized::SanitizedTransaction;
     use solana_cost_model::cost_model::CostModel;
     use solana_runtime_transaction::runtime_transaction::RuntimeTransaction;
+    use solana_runtime_transaction::transaction_meta::StaticMeta;
     use solana_svm::transaction_processing_result::{ProcessedTransaction, ProcessedTransaction::Executed};
+    use solana_vote_program::vote_processor::DEFAULT_COMPUTE_UNITS;
     let _ = Duration::abs_diff;
 
     let txns = unsafe {
@@ -98,6 +100,9 @@ pub unsafe extern "C" fn fd_ext_bank_execute_and_commit_bundle(bank: *const std:
     let bank = bank as *const Bank;
     unsafe { Arc::increment_strong_count(bank) };
     let bank = unsafe { Arc::from_raw(bank as *const Bank) };
+
+    let stop_use_static_simple_vote_tx_cost =
+        bank.feature_set.is_active(&agave_feature_set::stop_use_static_simple_vote_tx_cost::id());
 
     loop {
         if FIREDANCER_BUNDLE_COMMITTER.load(Ordering::Relaxed) != 0 {
@@ -145,12 +150,26 @@ pub unsafe extern "C" fn fd_ext_bank_execute_and_commit_bundle(bank: *const std:
         let (consumed_cus, loaded_accounts_data_cost, tips) =
             match &result {
                 Ok(Executed(tx)) => {
+                    let (consumed_cus, loaded_accounts_data_cost) =
+                        if !stop_use_static_simple_vote_tx_cost
+                            && txns[i].is_simple_vote_transaction()
+                        {
+                            // See TransactionCost::SimpleVote
+                            // - programs_execution_cost        = DEFAULT_COMPUTE_UNITS (2100)
+                            // - loaded_accounts_data_size_cost = 8
+                            (DEFAULT_COMPUTE_UNITS as u32, 8u32)
+                        } else {
+                            (
+                                tx.execution_details.executed_units.try_into().unwrap(),
+                                CostModel::calculate_loaded_accounts_data_size_cost(
+                                    tx.loaded_transaction.loaded_accounts_data_size,
+                                    &bank.feature_set,
+                                ) as u32,
+                            )
+                        };
                     (
-                        tx.execution_details.executed_units.try_into().unwrap(),
-                        CostModel::calculate_loaded_accounts_data_size_cost(
-                            tx.loaded_transaction.loaded_accounts_data_size,
-                            &bank.feature_set,
-                        ) as u32,
+                        consumed_cus,
+                        loaded_accounts_data_cost,
                         // jito collects a 3% fee at the end of the block + 3% fee at distribution time
                         tx.execution_details.tips - tx.execution_details.tips
                             .checked_mul(6)
@@ -224,7 +243,9 @@ pub unsafe extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ff
     use solana_svm::transaction_processor::ExecutionRecordingConfig;
     use solana_svm::transaction_processor::TransactionProcessingConfig;
     use solana_cost_model::cost_model::CostModel;
+    use solana_runtime_transaction::transaction_meta::StaticMeta;
     use std::sync::atomic::Ordering;
+    use solana_vote_program::vote_processor::DEFAULT_COMPUTE_UNITS;
 
     const FD_BANK_TRANSACTION_LANDED: i32 = 1;
     const FD_BANK_TRANSACTION_EXECUTED: i32 = 2;
@@ -239,6 +260,9 @@ pub unsafe extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ff
     let bank = bank as *const Bank;
     unsafe { Arc::increment_strong_count(bank) };
     let bank = unsafe { Arc::from_raw( bank as *const Bank ) };
+
+    let stop_use_static_simple_vote_tx_cost =
+        bank.feature_set.is_active(&agave_feature_set::stop_use_static_simple_vote_tx_cost::id());
 
     loop {
         if FIREDANCER_COMMITTER.load(Ordering::Relaxed) != 0 {
@@ -290,15 +314,29 @@ pub unsafe extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ff
             match &output.processing_results[i as usize] {
                 Err(err) => (0, 0u32, 0u32, transaction_error_to_code(&err), 0u64),
                 Ok(Executed(tx)) => {
+                    let (consumed_cus, loaded_accounts_data_cost) =
+                        if !stop_use_static_simple_vote_tx_cost
+                            && txns[i as usize].is_simple_vote_transaction()
+                        {
+                            // See TransactionCost::SimpleVote
+                            // - programs_execution_cost        = DEFAULT_COMPUTE_UNITS (2100)
+                            // - loaded_accounts_data_size_cost = 8
+                            (DEFAULT_COMPUTE_UNITS as u32, 8u32)
+                        } else {
+                            (
+                                /* Executed CUs must be less than the block CU limit, which is much less
+                                   than UINT_MAX, so the cast should be safe */
+                                tx.execution_details.executed_units.try_into().unwrap(),
+                                CostModel::calculate_loaded_accounts_data_size_cost(
+                                    tx.loaded_transaction.loaded_accounts_data_size,
+                                    &bank.feature_set,
+                                ) as u32,
+                            )
+                        };
                     (
                         FD_BANK_TRANSACTION_LANDED | FD_BANK_TRANSACTION_EXECUTED,
-                        /* Executed CUs must be less than the block CU limit, which is much less
-                           than UINT_MAX, so the cast should be safe */
-                        tx.execution_details.executed_units.try_into().unwrap(),
-                        CostModel::calculate_loaded_accounts_data_size_cost(
-                            tx.loaded_transaction.loaded_accounts_data_size,
-                            &bank.feature_set,
-                        ) as u32,
+                        consumed_cus,
+                        loaded_accounts_data_cost,
                         match &tx.execution_details.status {
                             Ok(_) => 0,
                             Err(err) => transaction_error_to_code( &err )
