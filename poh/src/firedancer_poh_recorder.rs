@@ -50,10 +50,11 @@ pub extern "C" fn fd_ext_poh_register_tick( bank: *const c_void, hash: *const u8
     unsafe { (*(bank as *const Bank)).register_tick(&hash, &BankWithScheduler::no_scheduler_available()) };
 }
 
-const FD_POH_RECORDER_FEATURES_OF_INTEREST_CNT: usize = 2usize;
+const FD_POH_RECORDER_FEATURES_OF_INTEREST_CNT: usize = 3usize;
 static FD_POH_RECORDER_FEATURES_OF_INTEREST: [Pubkey; FD_POH_RECORDER_FEATURES_OF_INTEREST_CNT] = [
     agave_feature_set::enforce_fixed_fec_set::id(),
     agave_feature_set::switch_to_chacha8_turbine::id(),
+    agave_feature_set::discard_unexpected_data_complete_shreds::id(),
 ];
 
 pub struct PohRecorder {
