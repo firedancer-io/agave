@@ -47,7 +47,7 @@ pub(crate) const PULL_RESPONSE_MIN_SERIALIZED_SIZE: usize = 161;
 /// Gossip protocol messages base enum
 #[derive(Serialize, Deserialize, Debug)]
 #[allow(clippy::large_enum_variant)]
-pub(crate) enum Protocol {
+pub enum Protocol {
     PullRequest(CrdsFilter, CrdsValue),
     PullResponse(Pubkey, Vec<CrdsValue>),
     PushMessage(Pubkey, Vec<CrdsValue>),
