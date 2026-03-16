@@ -7568,6 +7568,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "solana-bundle"
+version = "4.2.0-beta.1"
+dependencies = [
+ "assert_matches",
+ "itertools 0.14.0",
+ "log",
+ "serde",
+ "sha2 0.10.9",
+ "solana-account 4.3.1",
+ "solana-accounts-db",
+ "solana-ledger",
+ "solana-measure",
+ "solana-poh",
+ "solana-pubkey 4.2.0",
+ "solana-runtime",
+ "solana-runtime-transaction",
+ "solana-sdk-ids",
+ "solana-signature",
+ "solana-svm",
+ "solana-svm-timings",
+ "solana-transaction",
+ "solana-transaction-error",
+ "solana-transaction-status",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "solana-clap-utils"
 version = "4.2.0-beta.1"
 dependencies = [
@@ -8071,6 +8098,7 @@ dependencies = [
  "solana-bincode",
  "solana-bls-signatures",
  "solana-bpf-loader-program",
+ "solana-bundle",
  "solana-client",
  "solana-clock",
  "solana-cluster-type",
