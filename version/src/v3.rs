@@ -1,5 +1,5 @@
 use {
-    crate::{client_ids::ClientId, compute_commit},
+    crate::client_ids::ClientId,
     serde::{Deserialize, Serialize},
     solana_sanitize::Sanitize,
     solana_serde_varint as serde_varint,
@@ -32,14 +32,20 @@ impl Version {
 
 impl Default for Version {
     fn default() -> Self {
+        // FIREDANCER: Report firedancer version to gossip
+        unsafe extern "C" {
+            static fdctl_major_version: u64;
+            static fdctl_minor_version: u64;
+            static fdctl_patch_version: u64;
+            static fdctl_commit_ref: u32;
+        }
         let feature_set =
             u32::from_le_bytes(agave_feature_set::ID.as_ref()[..4].try_into().unwrap());
         Self {
-            // FIREDANCER: Report firedancer version to gossip
-            major: env!("FIREDANCER_VERSION_MAJOR").parse().unwrap(),
-            minor: env!("FIREDANCER_VERSION_MINOR").parse().unwrap(),
-            patch: env!("FIREDANCER_VERSION_PATCH").parse().unwrap(),
-            commit: compute_commit(option_env!("FIREDANCER_CI_COMMIT")).unwrap_or_default(),
+            major: unsafe { fdctl_major_version as u16 },
+            minor: unsafe { fdctl_minor_version as u16 },
+            patch: unsafe { fdctl_patch_version as u16 },
+            commit: unsafe { fdctl_commit_ref },
             feature_set,
             client: u16::try_from(ClientId::this_client()).unwrap(),
         }
