@@ -15,6 +15,7 @@ members = [
     "bucket_map",
     "builtins",
     "builtins-default-costs",
+    "bundle",
     "clap-utils",
     "clap-v3-utils",
     "cli",
@@ -335,6 +336,7 @@ serde_json = "1.0.151"
 serde_with = { version = "3.21.0", default-features = false }
 serde_yaml = "0.9.34"
 serial_test = "4.0.1"
+sha2 = "0.10.9"
 shaq = { version = "3.0.0" }
 shuttle = "0.7.1"
 signal-hook = "0.4.4"
@@ -366,6 +368,7 @@ solana-bpf-loader-program = { path = "programs/bpf_loader", version = "=4.3.0-be
 solana-bucket-map = { path = "bucket_map", version = "=4.3.0-beta.3", features = ["agave-unstable-api"] }
 solana-builtins = { path = "builtins", version = "=4.3.0-beta.3", features = ["agave-unstable-api"] }
 solana-builtins-default-costs = { path = "builtins-default-costs", version = "=4.3.0-beta.3", features = ["agave-unstable-api"] }
+solana-bundle = { path = "bundle", version = "=4.3.0-beta.3" }
 solana-clap-utils = { path = "clap-utils", version = "=4.3.0-beta.3", features = ["agave-unstable-api"] }
 solana-clap-v3-utils = { path = "clap-v3-utils", version = "=4.3.0-beta.3", features = ["agave-unstable-api"] }
 solana-cli-config = { path = "cli-config", version = "=4.3.0-beta.3" }
