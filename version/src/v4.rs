@@ -1,5 +1,5 @@
 use {
-    crate::{client_ids::ClientId, compute_commit},
+    crate::client_ids::ClientId,
     serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _, ser::Error as _},
     solana_sanitize::Sanitize,
     solana_serde_varint as serde_varint,
@@ -180,15 +180,22 @@ impl Version {
 
     pub fn this_build() -> Self {
         // FIREDANCER: Report firedancer version to gossip
+        unsafe extern "C" {
+            static fdctl_major_version: u64;
+            static fdctl_minor_version: u64;
+            static fdctl_patch_version: u64;
+            static fdctl_commit_ref: u32;
+        }
+        let packed_minor = PackedMinor( unsafe { fdctl_minor_version as u16 } );
+        let (minor, patch, prerelease) = packed_minor.try_unpack( unsafe { fdctl_patch_version as u16 } ).unwrap();
         Self::new_from_parts(
-            env!("FIREDANCER_VERSION_MAJOR").parse().unwrap(),
-            env!("FIREDANCER_VERSION_MINOR").parse().unwrap(),
-            env!("FIREDANCER_VERSION_PATCH").parse().unwrap(),
-            compute_commit(option_env!("FIREDANCER_CI_COMMIT"))
-                .unwrap_or_default(),
+            unsafe { fdctl_major_version as u16 },
+            minor,
+            patch,
+            unsafe { fdctl_commit_ref },
             u32::from_le_bytes(agave_feature_set::ID.as_ref()[..4].try_into().unwrap()),
             ClientId::this_client(),
-            Prerelease::Stable,
+            prerelease,
         )
     }
 
