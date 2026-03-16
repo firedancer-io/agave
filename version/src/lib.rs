@@ -11,9 +11,10 @@ pub mod v4;
 
 pub use {client_ids::*, v4::*};
 
-pub(crate) fn compute_commit(sha1: Option<&'static str>) -> Option<u32> {
-    u32::from_str_radix(sha1?.get(..8)?, /*radix:*/ 16).ok()
-}
+// FIREDANCER: Unused function, versioning is sourced from fdctl FFI symbols.
+// pub(crate) fn compute_commit(sha1: Option<&'static str>) -> Option<u32> {
+//     u32::from_str_radix(sha1?.get(..8)?, /*radix:*/ 16).ok()
+// }
 
 #[macro_export]
 macro_rules! semver {
