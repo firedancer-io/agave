@@ -3,7 +3,7 @@
 #![allow(clippy::arithmetic_side_effects)]
 
 #[cfg(not(feature = "dev-context-only-utils"))]
-mod account_saver;
+pub mod account_saver;
 #[cfg(feature = "dev-context-only-utils")]
 pub mod account_saver;
 pub mod accounts_background_service;
