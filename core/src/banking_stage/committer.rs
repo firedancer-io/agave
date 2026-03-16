@@ -21,10 +21,11 @@ use {
         transaction_processing_result::TransactionProcessingResult,
     },
     solana_transaction_error::TransactionError,
-    std::{num::Saturating, sync::Arc},
+    std::{num::Saturating, sync::Arc, time::Duration},
 };
 
 pub(crate) static FIREDANCER_COMMITTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub(crate) static FIREDANCER_BUNDLE_COMMITTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn transaction_error_to_code(err: &TransactionError) -> i32 {
     match err {
@@ -71,7 +72,166 @@ fn transaction_error_to_code(err: &TransactionError) -> i32 {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_void, txns: *const std::ffi::c_void, txn_count: u64, out_processing_result: *mut i32, out_transaction_err: *mut i32, out_consumed_exec_cus: *mut u32, out_consumed_acct_data_cus: *mut u32 ) -> *mut std::ffi::c_void {
+pub unsafe extern "C" fn fd_ext_bank_execute_and_commit_bundle(bank: *const std::ffi::c_void, txns: *const std::ffi::c_void, txn_count: u64, out_transaction_err: *mut i32, out_consumed_exec_cus: *mut u32, out_consumed_acct_data_cus: *mut u32, out_timestamps: *mut u64, out_tips: *mut u64, out_remove_simple_vote_from_cost_model: *mut i32) -> i32 {
+    use solana_clock::MAX_PROCESSING_AGE;
+    use std::sync::atomic::Ordering;
+    use solana_bundle::bundle_execution::load_and_execute_bundle;
+    use crate::bundle_stage::committer::Committer;
+    use solana_runtime::bank::{MAINNET_TIP_ACCOUNTS, TESTNET_TIP_ACCOUNTS, EMPTY_TIP_ACCOUNTS};
+    use solana_cluster_type::ClusterType;
+    use solana_transaction::sanitized::SanitizedTransaction;
+    use solana_cost_model::cost_model::CostModel;
+    use solana_runtime_transaction::runtime_transaction::RuntimeTransaction;
+    use solana_svm::transaction_processing_result::{ProcessedTransaction, ProcessedTransaction::Executed};
+    use solana_vote_program::vote_processor::DEFAULT_COMPUTE_UNITS;
+    let _ = Duration::abs_diff;
+
+    let txns = unsafe {
+        std::slice::from_raw_parts(txns as *const RuntimeTransaction<SanitizedTransaction>, txn_count as usize)
+    };
+    let out_timestamps = unsafe {
+        std::slice::from_raw_parts_mut(out_timestamps, 4 * txn_count as usize)
+    };
+
+    // We detect if an event happened if we set a non-zero timestamp for it
+    out_timestamps.iter_mut().for_each(|x| *x = 0);
+
+    let bank = bank as *const Bank;
+    unsafe { Arc::increment_strong_count(bank) };
+    let bank = unsafe { Arc::from_raw(bank as *const Bank) };
+
+    let remove_simple_vote_from_cost_model =
+        bank.feature_set.is_active(&agave_feature_set::remove_simple_vote_from_cost_model::id());
+    unsafe { *out_remove_simple_vote_from_cost_model = remove_simple_vote_from_cost_model as i32 };
+
+    loop {
+        if FIREDANCER_BUNDLE_COMMITTER.load(Ordering::Relaxed) != 0 {
+            break;
+        }
+        std::hint::spin_loop();
+    }
+    let committer: &Committer = unsafe {
+        (FIREDANCER_BUNDLE_COMMITTER.load(Ordering::Acquire) as *const Committer)
+            .as_ref()
+            .unwrap()
+    };
+
+    let transaction_status_sender_enabled = committer.transaction_status_sender_enabled();
+
+    let tip_accounts = if bank.cluster_type() == ClusterType::MainnetBeta {
+        &*MAINNET_TIP_ACCOUNTS
+    } else if bank.cluster_type() == ClusterType::Testnet {
+        &*TESTNET_TIP_ACCOUNTS
+    } else {
+        &*EMPTY_TIP_ACCOUNTS
+    };
+
+    let default_accounts = vec![None; txns.len()];
+    let bundle_execution_results = load_and_execute_bundle(
+        &bank,
+        txns,
+        MAX_PROCESSING_AGE,
+        transaction_status_sender_enabled,
+        &None,
+        None,
+        &default_accounts,
+        &default_accounts,
+        Some(tip_accounts),
+        out_timestamps,
+    );
+
+    for (i, result) in bundle_execution_results
+        .bundle_transaction_results()
+        .iter()
+        .map(|x| &x.load_and_execute_transactions_output().processing_results)
+        .flatten()
+        .enumerate()
+    {
+        let (consumed_cus, loaded_accounts_data_cost, tips) =
+            match &result {
+                Ok(Executed(tx)) => {
+                    let (consumed_cus, loaded_accounts_data_cost) =
+                        if !remove_simple_vote_from_cost_model
+                            && txns[i].is_simple_vote_transaction()
+                        {
+                            // See TransactionCost::SimpleVote
+                            // - programs_execution_cost        = DEFAULT_COMPUTE_UNITS (2100)
+                            // - loaded_accounts_data_size_cost = 8
+                            (DEFAULT_COMPUTE_UNITS as u32, 8u32)
+                        } else {
+                            (
+                                tx.execution_details.executed_units.try_into().unwrap(),
+                                CostModel::calculate_loaded_accounts_data_size_cost(
+                                    tx.loaded_transaction.loaded_accounts_data_size,
+                                    &bank.feature_set,
+                                ) as u32,
+                            )
+                        };
+                    (
+                        consumed_cus,
+                        loaded_accounts_data_cost,
+                        // jito collects a 3% fee at the end of the block + 3% fee at distribution time
+                        tx.execution_details.tips - tx.execution_details.tips
+                            .checked_mul(6)
+                            .unwrap()
+                            .checked_div(100)
+                            .unwrap(),
+                    )
+                },
+                // Transactions must've have succeeded, and not be fee-only,
+                // otherwise the entire bundle would have failed.
+                _ => unreachable!(),
+            };
+
+        unsafe { *out_transaction_err.offset(i.try_into().unwrap()) = 0 };
+        unsafe { *out_consumed_exec_cus.offset(i.try_into().unwrap()) = consumed_cus };
+        unsafe { *out_consumed_acct_data_cus.offset(i.try_into().unwrap()) = loaded_accounts_data_cost };
+        unsafe { *out_tips.offset(i.try_into().unwrap()) = tips };
+    }
+
+    // FIREDANCER: If any transaction in the bundle failed, we want to keep tips + CUs up to the point of failure
+    // for use by monitoring tools.
+    if let Err(err) = bundle_execution_results.result() {
+        match err {
+            solana_bundle::bundle_execution::LoadAndExecuteBundleError::TransactionError { index, execution_result, .. } => {
+                for j in 0..txn_count {
+                    // FIREDANCER: 40 is a custom error code for the BundlePeer error.
+                    unsafe { *out_transaction_err.offset(j as isize) = 40 };
+                }
+
+                for j in (*index)..(txn_count as usize) {
+                    unsafe { *out_consumed_exec_cus.offset(j as isize) = 0 };
+                    unsafe { *out_consumed_acct_data_cus.offset(j as isize) = 0 };
+                    unsafe { *out_tips.offset(j as isize) = 0u64 };
+                }
+
+                let err = match &**execution_result {
+                    Ok(ProcessedTransaction::Executed(tx)) => tx.execution_details.status.as_ref().unwrap_err().clone(),
+                    Ok(ProcessedTransaction::FeesOnly(tx)) => tx.load_error.clone(),
+                    Err(err) => err.clone(),
+                };
+
+                unsafe { *out_transaction_err.offset(*index as isize) = transaction_error_to_code(&err) };
+
+                return 0;
+            }
+        }
+    }
+
+
+    let mut execute_and_commit_timings = LeaderExecuteAndCommitTimings::default();
+    let (_commit_us, _commit_bundle_details) = committer.commit_bundle(
+        bundle_execution_results,
+        Some(0),
+        &bank,
+        &mut execute_and_commit_timings,
+    );
+
+    1
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_void, txns: *const std::ffi::c_void, txn_count: u64, out_processing_result: *mut i32, out_transaction_err: *mut i32, out_consumed_exec_cus: *mut u32, out_consumed_acct_data_cus: *mut u32, out_timestamps: *mut u64, out_tips: *mut u64, out_remove_simple_vote_from_cost_model: *mut i32 ) -> *mut std::ffi::c_void {
     use solana_svm_timings::ExecuteTimings;
     use solana_runtime::bank::LoadAndExecuteTransactionsOutput;
     use solana_runtime::transaction_batch::OwnedOrBorrowed;
@@ -92,12 +252,17 @@ pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_vo
     let txns = unsafe {
         std::slice::from_raw_parts(txns as *const RuntimeTransaction<SanitizedTransaction>, txn_count as usize)
     };
+    let out_timestamps = unsafe {
+        std::slice::from_raw_parts_mut(out_timestamps, 4 * txn_count as usize)
+    };
+
     let bank = bank as *const Bank;
     unsafe { Arc::increment_strong_count(bank) };
     let bank = unsafe { Arc::from_raw( bank as *const Bank ) };
 
     let remove_simple_vote_from_cost_model =
         bank.feature_set.is_active(&agave_feature_set::remove_simple_vote_from_cost_model::id());
+    unsafe { *out_remove_simple_vote_from_cost_model = remove_simple_vote_from_cost_model as i32 };
 
     loop {
         if FIREDANCER_COMMITTER.load(Ordering::Relaxed) != 0 {
@@ -137,10 +302,17 @@ pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_vo
         }
     );
 
+    for i in 0..(txn_count as usize) {
+        out_timestamps[4 * i + 0] = timings.details.ts_tx_start;
+        out_timestamps[4 * i + 1] = timings.details.ts_tx_load_end;
+        out_timestamps[4 * i + 2] = timings.details.ts_tx_end;
+        out_timestamps[4 * i + 3] = timings.details.ts_tx_preload_end;
+    }
+
     for i in 0..txn_count {
-        let (processing_result, consumed_cus, loaded_accounts_data_cost, transaction_err) =
+        let (processing_result, consumed_cus, loaded_accounts_data_cost, transaction_err, tips) =
             match &output.processing_results[i as usize] {
-                Err(err) => (0, 0u32, 0u32, transaction_error_to_code(&err)),
+                Err(err) => (0, 0u32, 0u32, transaction_error_to_code(&err), 0u64),
                 Ok(Executed(tx)) => {
                     let (consumed_cus, loaded_accounts_data_cost) =
                         if !remove_simple_vote_from_cost_model
@@ -168,6 +340,15 @@ pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_vo
                         match &tx.execution_details.status {
                             Ok(_) => 0,
                             Err(err) => transaction_error_to_code( &err )
+                        },
+                        match &tx.execution_details.status {
+                            // jito collects a 3% fee at the end of the block + 3% fee at distribution time
+                            Ok(_) => tx.execution_details.tips - tx.execution_details.tips
+                                .checked_mul(6)
+                                .unwrap()
+                                .checked_div(100)
+                                .unwrap(),
+                            Err(_err) => 0u64
                         }
                     )
                 },
@@ -190,13 +371,15 @@ pub extern "C" fn fd_ext_bank_load_and_execute_txns( bank: *const std::ffi::c_vo
                         tx.loaded_accounts_data_size,
                         &bank.feature_set,
                     ) as u32,
-                    transaction_error_to_code( &tx.load_error )
+                    transaction_error_to_code( &tx.load_error ),
+                    0u64
                 )
             };
         unsafe { *out_processing_result.offset(i as isize) = processing_result };
         unsafe { *out_transaction_err.offset(i as isize) = transaction_err };
         unsafe { *out_consumed_exec_cus.offset(i as isize) = consumed_cus };
         unsafe { *out_consumed_acct_data_cus.offset(i as isize) = loaded_accounts_data_cost };
+        unsafe { *out_tips.offset(i as isize) = tips };
     }
 
     let load_and_execute_output: Box<LoadAndExecuteTransactionsOutput> = Box::new(output);
