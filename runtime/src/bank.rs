@@ -4089,6 +4089,7 @@ impl Bank {
     ) -> LoadAndExecuteTransactionsOutput {
         let sanitized_txs = batch.sanitized_transactions();
 
+        timings.details.ts_tx_preload_end = unsafe { std::arch::x86_64::_rdtsc() };
         let (check_results, check_us) = measure_us!(self.check_transactions(
             sanitized_txs,
             batch.lock_results(),
