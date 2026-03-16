@@ -97,6 +97,7 @@ solana-accounts-db = { workspace = true }
 solana-address-lookup-table-interface = { workspace = true }
 solana-bincode = { workspace = true }
 solana-bls-signatures = { workspace = true }
+solana-bundle = { workspace = true }
 solana-client = { workspace = true }
 solana-clock = { workspace = true }
 solana-cluster-type = { workspace = true }
