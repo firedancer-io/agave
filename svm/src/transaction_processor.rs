@@ -63,7 +63,7 @@ use {
     solana_transaction_context::transaction::{ExecutionRecord, TransactionContext},
     solana_transaction_error::{TransactionError, TransactionResult},
     std::{
-        collections::HashSet,
+        collections::{HashMap, HashSet},
         fmt::{Debug, Formatter},
         rc::Rc,
     },
@@ -119,6 +119,10 @@ pub struct TransactionProcessingConfig<'a, 'b> {
     /// Encapsulates overridden accounts, typically used for transaction
     /// simulation.
     pub account_overrides: Option<&'a AccountOverrides>,
+    /// FIREDANCER: Program cache entries (Closed/Deployed tombstones and
+    /// recompiled programs) produced by previously executed transactions in the
+    /// same bundle.
+    pub program_cache_overrides: Option<&'a HashMap<Pubkey, Arc<ProgramCacheEntry>>>,
     /// Whether or not to check a program's deployment slot when replenishing
     /// a program cache instance.
     pub check_program_deployment_slot: bool,
@@ -451,6 +455,12 @@ impl<FG: ForkGraph> TransactionBatchProcessor<FG> {
         // in the transaction loop below.
         let mut program_cache_for_tx_batch = self.builtin_program_cache.read().unwrap().clone();
 
+        // FIREDANCER: Seed the batch-local program cache with program modifications made by
+        // earlier transactions in the same bundle.
+        if let Some(program_cache_overrides) = config.program_cache_overrides {
+            program_cache_for_tx_batch.merge(program_cache_overrides);
+        }
+
         if program_cache_for_tx_batch.hit_max_limit {
             return LoadAndExecuteSanitizedTransactionsOutput {
                 error_metrics,
@@ -471,6 +481,10 @@ impl<FG: ForkGraph> TransactionBatchProcessor<FG> {
         // in the same batch may modify the same accounts. Transaction order is
         // preserved within entries written to the ledger.
         for (tx, check_result) in sanitized_txs.iter().zip(check_results) {
+
+            // FIREDANCER
+            let start_ticks = unsafe { std::arch::x86_64::_rdtsc() };
+
             let (validate_result, validate_fees_us) = measure_us!(match check_result {
                 Ok(tx_details) => Self::validate_transaction_nonce_and_fee_payer(
                     &mut account_loader,
@@ -501,6 +515,9 @@ impl<FG: ForkGraph> TransactionBatchProcessor<FG> {
                 measure_us!(balance_collector.collect_pre_balances(&mut account_loader, tx));
             execute_timings
                 .saturating_add_in_place(ExecuteTimingType::CollectBalancesUs, collect_balances_us);
+
+            // FIRDANCER
+            let load_end_ticks = unsafe { std::arch::x86_64::_rdtsc() };
 
             let (processing_result, single_execution_us) = measure_us!(match load_result {
                 // Unprocessable transactions always result in an error
@@ -654,6 +671,12 @@ impl<FG: ForkGraph> TransactionBatchProcessor<FG> {
                     balance_collector: None,
                 };
             }
+
+            // FIREDANCER
+            let end_ticks = unsafe { std::arch::x86_64::_rdtsc() };
+            execute_timings.details.ts_tx_start = start_ticks;
+            execute_timings.details.ts_tx_end = end_ticks;
+            execute_timings.details.ts_tx_load_end = load_end_ticks;
 
             processing_results.push(processing_result);
         }
@@ -1240,14 +1263,7 @@ impl<FG: ForkGraph> TransactionBatchProcessor<FG> {
             None
         };
 
-        /* This logic is done this way, rather than tips * 95 / 100 to match the order of
-           operations and arithmetic precendence in the tip payment program itself. */
         let tips = tip_accounts_after_tx.saturating_sub(tip_accounts_before_tx);
-        let tips = tips - tips
-            .checked_mul(5)
-            .unwrap()
-            .checked_div(100)
-            .unwrap();
 
         ExecutedTransaction {
             execution_details: TransactionExecutionDetails {
