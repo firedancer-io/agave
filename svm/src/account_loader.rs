@@ -200,12 +200,13 @@ impl<'a, CB: TransactionProcessingCallback> AccountLoader<'a, CB> {
     ) -> AccountLoader<'a, CB> {
         let mut loaded_accounts = AHashMap::with_capacity(capacity);
 
-        // SlotHistory may be overridden for simulation.
-        // No other uses of AccountOverrides are expected.
-        if let Some(slot_history) =
-            account_overrides.and_then(|overrides| overrides.get(&slot_history::id()))
-        {
-            loaded_accounts.insert(slot_history::id(), (slot_history.clone(), 0));
+        // FIREDANCER: Allow loading accounts from account_overrides so that bundles execute
+        // properly.
+        let _ = slot_history::id();
+        if let Some(overrides) = account_overrides {
+            for (key, account) in overrides.accounts() {
+              loaded_accounts.insert(*key, (account.clone(), 0));
+            }
         }
 
         Self {

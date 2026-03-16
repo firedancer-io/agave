@@ -324,6 +324,7 @@ impl Consumer {
                 &mut error_counters,
                 TransactionProcessingConfig {
                     account_overrides: None,
+                    program_cache_overrides: None,
                     log_messages_bytes_limit: self.log_messages_bytes_limit,
                     limit_to_load_programs: true,
                     recording_config: ExecutionRecordingConfig::new_single_setting(
