@@ -59,13 +59,14 @@ use {
 
 pub mod transaction_scheduler;
 
-mod committer;
+// FIREDANCER: This is made public for convenient use by the bundle crate code.
+pub mod committer;
 mod consume_worker;
 mod consumer;
 mod decision_maker;
 mod latest_validator_vote_packet;
 mod leader_slot_metrics;
-mod leader_slot_timing_metrics;
+pub mod leader_slot_timing_metrics;
 mod qos_service;
 mod scheduler_messages;
 mod vote_packet_receiver;
@@ -372,6 +373,11 @@ impl BankingStage {
         priority_floor: Arc<SchedulerPriorityFloor>,
     ) -> BankingStageHandle {
         let committer = Committer::new(
+            transaction_status_sender.clone(),
+            replay_vote_sender.clone(),
+            prioritization_fee_cache.clone(),
+        );
+        let bundle_committer = crate::bundle_stage::committer::Committer::new(
             transaction_status_sender,
             replay_vote_sender,
             prioritization_fee_cache,
@@ -412,6 +418,12 @@ impl BankingStage {
                 }))
             })
             .unwrap();
+
+        committer::FIREDANCER_BUNDLE_COMMITTER.store(
+          Box::into_raw(Box::new(bundle_committer)) as *const crate::bundle_stage::committer::Committer
+              as u64,
+          Ordering::Release,
+        );
 
         BankingStageHandle {
             banking_shutdown_signal,
