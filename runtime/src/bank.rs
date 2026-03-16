@@ -3962,6 +3962,7 @@ impl Bank {
             &mut TransactionErrorMetrics::default(),
             TransactionProcessingConfig {
                 account_overrides: Some(&account_overrides),
+                program_cache_overrides: None,
                 log_messages_bytes_limit: None,
                 limit_to_load_programs: true,
                 recording_config: ExecutionRecordingConfig {
@@ -4143,6 +4144,7 @@ impl Bank {
     ) -> LoadAndExecuteTransactionsOutput {
         let sanitized_txs = batch.sanitized_transactions();
 
+        timings.details.ts_tx_preload_end = unsafe { std::arch::x86_64::_rdtsc() };
         let (check_results, check_us) = measure_us!(self.check_transactions(
             sanitized_txs,
             batch.lock_results(),
@@ -4755,6 +4757,7 @@ impl Bank {
             &mut TransactionErrorMetrics::default(),
             TransactionProcessingConfig {
                 account_overrides: None,
+                program_cache_overrides: None,
                 log_messages_bytes_limit,
                 limit_to_load_programs: false,
                 recording_config,

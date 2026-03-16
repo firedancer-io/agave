@@ -6173,6 +6173,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "solana-bundle"
+version = "4.3.0-beta.0"
+dependencies = [
+ "itertools 0.14.0",
+ "log",
+ "serde",
+ "sha2 0.10.9",
+ "solana-account 4.5.0",
+ "solana-ledger",
+ "solana-measure",
+ "solana-poh",
+ "solana-pubkey 4.3.0",
+ "solana-runtime",
+ "solana-runtime-transaction",
+ "solana-sdk-ids",
+ "solana-signature",
+ "solana-svm",
+ "solana-svm-timings",
+ "solana-transaction",
+ "solana-transaction-error",
+ "solana-transaction-status",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "solana-clap-utils"
 version = "4.3.0-beta.2"
 dependencies = [
@@ -6477,6 +6502,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_bytes",
+ "serde_json",
  "shaq",
  "signal-hook",
  "slab",
@@ -6486,10 +6512,13 @@ dependencies = [
  "solana-address-lookup-table-interface",
  "solana-bincode",
  "solana-bls-signatures",
+ "solana-bundle",
  "solana-client",
  "solana-clock",
  "solana-cluster-type",
+ "solana-commitment-config",
  "solana-compute-budget-interface",
+ "solana-config-interface",
  "solana-connection-cache",
  "solana-cost-model",
  "solana-entry",
@@ -6644,7 +6673,10 @@ name = "solana-download-utils"
 version = "4.3.0-beta.2"
 dependencies = [
  "agave-snapshots",
+ "console 0.16.4",
+ "indicatif",
  "log",
+ "reqwest 0.12.28",
  "solana-clock",
  "solana-file-download",
  "solana-genesis-config",
@@ -6963,6 +6995,7 @@ dependencies = [
  "serde-big-array",
  "serde_bytes",
  "solana-bloom",
+ "solana-client",
  "solana-clock",
  "solana-entry",
  "solana-epoch-schedule",
@@ -7520,12 +7553,14 @@ name = "solana-poh"
 version = "4.3.0-beta.2"
 dependencies = [
  "agave-cpu-utils",
+ "agave-feature-set",
  "agave-votor-messages",
  "arc-swap",
  "crossbeam-channel",
  "log",
  "qualifier_attr",
  "solana-clock",
+ "solana-cost-model",
  "solana-entry",
  "solana-hash 4.6.0",
  "solana-leader-schedule",
