@@ -186,14 +186,16 @@ impl Version {
             static fdctl_patch_version: u64;
             static fdctl_commit_ref: u32;
         }
+        let packed_minor = PackedMinor( unsafe { fdctl_minor_version as u16 } );
+        let (minor, patch, prerelease) = packed_minor.try_unpack( unsafe { fdctl_patch_version as u16 } ).unwrap();
         Self::new_from_parts(
             unsafe { fdctl_major_version as u16 },
-            unsafe { fdctl_minor_version as u16 },
-            unsafe { fdctl_patch_version as u16 },
+            minor,
+            patch,
             unsafe { fdctl_commit_ref },
             u32::from_le_bytes(agave_feature_set::ID.as_ref()[..4].try_into().unwrap()),
             ClientId::this_client(),
-            Prerelease::Stable,
+            prerelease,
         )
     }
 
