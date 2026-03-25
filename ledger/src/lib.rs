@@ -53,3 +53,6 @@ mod wire_format_tests;
 pub mod macro_reexports {
     pub use solana_genesis_utils::MAX_GENESIS_ARCHIVE_UNPACKED_SIZE;
 }
+
+#[cfg(kani)]
+pub mod shred_proof;
