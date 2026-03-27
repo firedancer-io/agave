@@ -10,7 +10,6 @@ use {
         mem_pool::VmMemoryPool,
         serialization, stable_log,
     },
-    cfg_if::cfg_if,
     solana_sbpf::static_analysis::Analysis,
     solana_instruction::error::InstructionError,
     solana_program_entrypoint::{MAX_PERMITTED_DATA_INCREASE, SUCCESS},
