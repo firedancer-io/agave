@@ -1836,17 +1836,32 @@ impl Bank {
         new
     }
 
+    // The serialized rent collector is deprecated. Instead, reconstruct from fields plus
+    // the rent sysvar account state.
+    fn get_rent(bank_rc: &BankRc, ancestors: &Ancestors) -> Rent {
+        let rent_sysvar = bank_rc
+            .accounts
+            .load_with_fixed_root_do_not_populate_read_cache(ancestors, &sysvar::rent::id())
+            .expect("accounts must contain rent sysvar account")
+            .0;
+        from_account::<sysvar::rent::Rent, _>(&rent_sysvar)
+            .expect("accounts must contain well-formed rent sysvar account")
+    }
+
     pub fn new_for_txn_fuzzing(
         bank_rc: BankRc,
         fields: BankFieldsToDeserialize,
         feature_set: FeatureSet,
         epoch_stakes: HashMap<Epoch, VersionedEpochStakes>,
     ) -> Self {
+        let epoch = fields.epoch_schedule.get_epoch(fields.slot);
+        let ancestors = Ancestors::from(vec![fields.slot]);
+        let rent = Self::get_rent(&bank_rc, &ancestors);
         let mut bank = Self {
             rc: bank_rc,
             status_cache: Arc::<RwLock<BankStatusCache>>::default(),
             blockhash_queue: RwLock::new(fields.blockhash_queue),
-            ancestors: Ancestors::from(vec![fields.slot]),
+            ancestors,
             hash: RwLock::new(fields.hash),
             parent_hash: fields.parent_hash,
             parent_slot: fields.parent_slot,
@@ -1867,13 +1882,16 @@ impl Bank {
             slots_per_year: fields.slots_per_year,
             slot: fields.slot,
             bank_id: 0,
-            epoch: fields.epoch,
+            epoch,
             block_height: fields.block_height,
             leader_id: fields.leader_id,
-            collector_fees: AtomicU64::new(fields.collector_fees),
             fee_rate_governor: fields.fee_rate_governor,
-            // clone()-ing is needed to consider a gated behavior in rent_collector
-            rent_collector: Self::get_rent_collector_from(&fields.rent_collector, fields.epoch),
+            rent_collector: RentCollector::new(
+                epoch,
+                fields.epoch_schedule.clone(),
+                fields.slots_per_year,
+                rent,
+            ),
             epoch_schedule: fields.epoch_schedule,
             inflation: Arc::new(RwLock::new(fields.inflation)),
             stakes_cache: StakesCache::default(), /* Irrelevant for txn fuzzing */
@@ -1895,7 +1913,7 @@ impl Bank {
             accounts_data_size_delta_on_chain: AtomicI64::new(0),
             accounts_data_size_delta_off_chain: AtomicI64::new(0),
             epoch_reward_status: EpochRewardStatus::default(),
-            transaction_processor: TransactionBatchProcessor::new_uninitialized(fields.slot, fields.epoch),
+            transaction_processor: TransactionBatchProcessor::new_uninitialized(fields.slot, epoch),
             check_program_deployment_slot: false,
             // collector_fee_details is not serialized to snapshot
             collector_fee_details: RwLock::new(CollectorFeeDetails::default()),
@@ -1934,11 +1952,14 @@ impl Bank {
         stakes: Stakes<crate::stake_account::StakeAccount<solana_stake_interface::state::Delegation>>,
         accounts_data_size_initial: u64,
     ) -> Self {
+        let epoch = fields.epoch_schedule.get_epoch(fields.slot);
+        let ancestors = Ancestors::from(vec![fields.slot]);
+        let rent = Self::get_rent(&bank_rc, &ancestors);
         let mut bank = Self {
             rc: bank_rc,
             status_cache: Arc::<RwLock<BankStatusCache>>::default(),
             blockhash_queue: RwLock::new(fields.blockhash_queue),
-            ancestors: Ancestors::from(vec![fields.slot]),
+            ancestors,
             hash: RwLock::new(fields.hash),
             parent_hash: fields.parent_hash,
             parent_slot: fields.parent_slot,
@@ -1959,12 +1980,16 @@ impl Bank {
             slots_per_year: fields.slots_per_year,
             slot: fields.slot,
             bank_id: 0,
-            epoch: fields.epoch,
+            epoch,
             block_height: fields.block_height,
             leader_id: fields.leader_id,
-            collector_fees: AtomicU64::new(fields.collector_fees),
             fee_rate_governor: fields.fee_rate_governor,
-            rent_collector: Self::get_rent_collector_from(&fields.rent_collector, fields.epoch),
+            rent_collector: RentCollector::new(
+                epoch,
+                fields.epoch_schedule.clone(),
+                fields.slots_per_year,
+                rent,
+            ),
             epoch_schedule: fields.epoch_schedule,
             inflation: Arc::new(RwLock::new(fields.inflation)),
             stakes_cache: StakesCache::new(stakes),
@@ -1986,7 +2011,7 @@ impl Bank {
             accounts_data_size_delta_on_chain: AtomicI64::new(0),
             accounts_data_size_delta_off_chain: AtomicI64::new(0),
             epoch_reward_status: EpochRewardStatus::default(),
-            transaction_processor: TransactionBatchProcessor::new_uninitialized(fields.slot, fields.epoch),
+            transaction_processor: TransactionBatchProcessor::new_uninitialized(fields.slot, epoch),
             check_program_deployment_slot: false,
             collector_fee_details: RwLock::new(CollectorFeeDetails::default()),
             compute_budget: None,
