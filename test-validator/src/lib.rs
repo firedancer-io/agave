@@ -818,7 +818,11 @@ impl TestValidator {
     ) -> Self {
         let test_validator = TestValidatorGenesis::default()
             .fee_rate_governor(FeeRateGovernor::new(target_lamports_per_signature, 0))
-            .rent(Rent::with_lamports_per_byte(1))
+            .rent(Rent {
+                lamports_per_byte_year: 1,
+                exemption_threshold: 1.0,
+                ..Rent::default()
+            })
             .faucet_addr(faucet_addr)
             .start_with_mint_address(mint_address, socket_addr_space)
             .expect("validator start failed");
@@ -843,7 +847,11 @@ impl TestValidator {
     ) -> Self {
         TestValidatorGenesis::default()
             .fee_rate_governor(FeeRateGovernor::new(target_lamports_per_signature, 0))
-            .rent(Rent::with_lamports_per_byte(1))
+            .rent(Rent {
+                lamports_per_byte_year: 1,
+                exemption_threshold: 1.0,
+                ..Rent::default()
+            })
             .faucet_addr(faucet_addr)
             .start_async_with_mint_address(mint_keypair, socket_addr_space)
             .await
