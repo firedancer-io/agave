@@ -355,7 +355,6 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     };
 
     let rent = Rent::default();
-    #[allow(deprecated)]
     let (
         default_lamports_per_byte_year,
         default_rent_exemption_threshold,
@@ -687,7 +686,6 @@ fn main() -> Result<(), Box<dyn error::Error>> {
 
     let ledger_path = PathBuf::from(matches.value_of("ledger_path").unwrap());
 
-    #[allow(deprecated)]
     let rent = Rent {
         lamports_per_byte_year: value_t_or_exit!(matches, "lamports_per_byte_year", u64),
         exemption_threshold: value_t_or_exit!(matches, "rent_exemption_threshold", f64),

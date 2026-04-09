@@ -12741,7 +12741,6 @@ fn test_new_from_snapshot_uses_rent_from_sysvar() {
         None,
         bank.load_accounts_data_size(),
         epoch_stakes,
-        None,
     );
 
     // Verify the bank's rent matches the sysvar, NOT the corrupted fields

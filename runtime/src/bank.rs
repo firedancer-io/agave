@@ -218,7 +218,7 @@ struct VerifyAccountsHashConfig {
     require_rooted_bank: bool,
 }
 
-pub mod accounts_lt_hash;
+mod accounts_lt_hash;
 mod address_lookup_table;
 pub mod bank_hash_details;
 pub mod builtins;
@@ -691,7 +691,7 @@ pub trait RewardCalcTracer: Fn(&RewardCalculationEvent) + Send + Sync {}
 
 impl<T: Fn(&RewardCalculationEvent) + Send + Sync> RewardCalcTracer for T {}
 
-pub fn null_tracer() -> Option<impl RewardCalcTracer> {
+fn null_tracer() -> Option<impl RewardCalcTracer> {
     None::<fn(&RewardCalculationEvent)>
 }
 
@@ -925,7 +925,7 @@ pub struct Bank {
     ///
     /// Note: The initial state must be strictly from an ancestor,
     /// and not an intermediate state within this slot.
-    pub cache_for_accounts_lt_hash: DashMap<Pubkey, AccountsLtHashCacheValue, ahash::RandomState>,
+    cache_for_accounts_lt_hash: DashMap<Pubkey, AccountsLtHashCacheValue, ahash::RandomState>,
 
     /// Stats related to the accounts lt hash
     stats_for_accounts_lt_hash: AccountsLtHashStats,
@@ -1710,7 +1710,7 @@ impl Bank {
     }
 
     /// process for the start of a new epoch
-    pub fn process_new_epoch(
+    fn process_new_epoch(
         &mut self,
         parent_epoch: Epoch,
         parent_slot: Slot,
@@ -1836,8 +1836,6 @@ impl Bank {
         new
     }
 
-    // The serialized rent collector is deprecated. Instead, reconstruct from fields plus
-    // the rent sysvar account state.
     fn get_rent(bank_rc: &BankRc, ancestors: &Ancestors) -> Rent {
         let rent_sysvar = bank_rc
             .accounts
@@ -1856,6 +1854,9 @@ impl Bank {
     ) -> Self {
         let epoch = fields.epoch_schedule.get_epoch(fields.slot);
         let ancestors = Ancestors::from(vec![fields.slot]);
+
+        // The serialized rent collector is deprecated. Instead, reconstruct from fields plus
+        // the rent sysvar account state.
         let rent = Self::get_rent(&bank_rc, &ancestors);
         let mut bank = Self {
             rc: bank_rc,
@@ -2087,7 +2088,7 @@ impl Bank {
     }
 
     /// Create a bank from explicit arguments and deserialized fields from snapshot
-    pub fn new_from_snapshot(
+    pub(crate) fn new_from_snapshot(
         bank_rc: BankRc,
         genesis_config: &GenesisConfig,
         runtime_config: Arc<RuntimeConfig>,
@@ -2095,7 +2096,6 @@ impl Bank {
         debug_keys: Option<Arc<HashSet<Pubkey>>>,
         accounts_data_size_initial: u64,
         epoch_stakes: HashMap<Epoch, VersionedEpochStakes>,
-        #[allow(unused)] feature_set: Option<FeatureSet>,
     ) -> Self {
         let now = Instant::now();
         let slot = fields.slot;
@@ -2135,15 +2135,7 @@ impl Bank {
         let stakes_accounts_load_duration = now.elapsed();
         // The serialized rent collector is deprecated. Instead, reconstruct from fields plus
         // the rent sysvar account state.
-        let rent = {
-            let rent_sysvar = bank_rc
-                .accounts
-                .load_with_fixed_root_do_not_populate_read_cache(&ancestors, &sysvar::rent::id())
-                .expect("snapshot must contain rent sysvar account")
-                .0;
-            from_account::<sysvar::rent::Rent, _>(&rent_sysvar)
-                .expect("snapshot must contain well-formed rent sysvar account")
-        };
+        let rent = Self::get_rent(&bank_rc, &ancestors);
         let mut bank = Self {
             rc: bank_rc,
             status_cache: Arc::<RwLock<BankStatusCache>>::default(),
@@ -2190,9 +2182,6 @@ impl Bank {
             transaction_log_collector_config: Arc::<RwLock<TransactionLogCollectorConfig>>::default(
             ),
             transaction_log_collector: Arc::<RwLock<TransactionLogCollector>>::default(),
-            #[cfg(feature = "dev-context-only-utils")]
-            feature_set: Arc::new(feature_set.unwrap_or_default()),
-            #[cfg(not(feature = "dev-context-only-utils"))]
             feature_set: Arc::<FeatureSet>::default(),
             reserved_account_keys: Arc::<ReservedAccountKeys>::default(),
             drop_callback: RwLock::new(OptionalDropCallback(None)),
@@ -2313,10 +2302,6 @@ impl Bank {
         &self.leader_id
     }
 
-    pub fn set_leader_id_for_tests(&mut self, leader_id: Pubkey) {
-        self.leader_id = leader_id;
-    }
-
     pub fn genesis_creation_time(&self) -> UnixTimestamp {
         self.genesis_creation_time
     }
@@ -2428,7 +2413,7 @@ impl Bank {
             .unwrap_or_default()
     }
 
-    pub fn update_clock(&self, parent_epoch: Option<Epoch>) {
+    fn update_clock(&self, parent_epoch: Option<Epoch>) {
         let mut unix_timestamp = self.clock().unix_timestamp;
         // set epoch_start_timestamp to None to warp timestamp
         let epoch_start_timestamp = {
@@ -2560,7 +2545,7 @@ impl Bank {
         });
     }
 
-    pub fn update_slot_hashes(&self) {
+    fn update_slot_hashes(&self) {
         self.update_sysvar_account(&sysvar::slot_hashes::id(), |account| {
             let mut slot_hashes = account
                 .as_ref()
@@ -2679,7 +2664,7 @@ impl Bank {
         self.epoch_stakes.insert(epoch, stakes);
     }
 
-    pub fn update_rent(&self) {
+    fn update_rent(&self) {
         self.update_sysvar_account(&sysvar::rent::id(), |account| {
             create_account(
                 &self.rent_collector.rent,
@@ -2688,7 +2673,7 @@ impl Bank {
         });
     }
 
-    pub fn update_epoch_schedule(&self) {
+    fn update_epoch_schedule(&self) {
         self.update_sysvar_account(&sysvar::epoch_schedule::id(), |account| {
             create_account(
                 self.epoch_schedule(),
@@ -2697,7 +2682,7 @@ impl Bank {
         });
     }
 
-    pub fn update_stake_history(&self, epoch: Option<Epoch>) {
+    fn update_stake_history(&self, epoch: Option<Epoch>) {
         if epoch == Some(self.epoch()) {
             return;
         }
@@ -3140,13 +3125,8 @@ impl Bank {
         self.store_account_and_update_capitalization(program_id, &account);
     }
 
-    #[allow(deprecated)]
     pub fn set_rent_burn_percentage(&mut self, burn_percent: u8) {
         self.rent_collector.rent.burn_percent = burn_percent;
-    }
-
-    pub fn set_rent_collector_rent(&mut self, rent: Rent) {
-        self.rent_collector.rent = rent;
     }
 
     pub fn set_hashes_per_tick(&mut self, hashes_per_tick: Option<u64>) {
@@ -5871,7 +5851,6 @@ impl Bank {
     }
 
     /// This is called from each epoch boundary
-    #[allow(deprecated)]
     fn compute_and_apply_new_feature_activations(&mut self) {
         let include_pending = true;
         let (feature_set, new_feature_activations) =

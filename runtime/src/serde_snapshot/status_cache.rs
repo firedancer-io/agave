@@ -353,7 +353,6 @@ enum SerdeInstructionError {
 }
 
 impl From<SerdeInstructionError> for InstructionError {
-    #[allow(deprecated)]
     fn from(err: SerdeInstructionError) -> Self {
         match err {
             SerdeInstructionError::GenericError => Self::GenericError,

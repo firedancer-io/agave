@@ -268,7 +268,7 @@ pub fn execute<'a, 'b: 'a>(
         }
         let (compute_units_consumed, result) = vm.execute_program(executable, !use_jit);
         let register_trace = std::mem::take(&mut vm.register_trace);
-        if std::env::var("ENABLE_VM_TRACING").is_ok() {
+        if executable.get_config().enable_register_tracing {
             let analysis = Analysis::from_executable(executable).unwrap();
             analysis
                 .disassemble_register_trace(&mut std::io::stdout(), &register_trace)
