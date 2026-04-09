@@ -296,6 +296,11 @@ pub struct LowestSlot {
 }
 
 impl LowestSlot {
+    #[cfg(test)]
+    pub(crate) fn wallclock(&self) -> u64 {
+        self.wallclock
+    }
+
     pub(crate) fn new(from: Pubkey, lowest: Slot, wallclock: u64) -> Self {
         Self {
             from,

@@ -91,10 +91,20 @@ impl solana_sanitize::Sanitize for CrdsFilter {
 
 impl CrdsFilter {
     #[cfg(test)]
+    pub(crate) fn mask(&self) -> u64 {
+        self.mask
+    }
+
+    #[cfg(test)]
+    pub(crate) fn mask_bits(&self) -> u32 {
+        self.mask_bits
+    }
+
+    #[cfg(test)]
     pub(crate) fn new_rand(num_items: usize, max_bytes: usize) -> Self {
         let max_bits = (max_bytes * 8) as f64;
         let max_items = Self::max_items(max_bits, FALSE_RATE, KEYS);
-        let mask_bits = Self::mask_bits(num_items as f64, max_items);
+        let mask_bits = Self::compute_mask_bits(num_items as f64, max_items);
         let filter = Bloom::random(max_items as usize, FALSE_RATE, max_bits as usize);
         let seed: u64 = rand::rng().random_range(0..2u64.pow(mask_bits));
         let mask = Self::compute_mask(seed, mask_bits);
@@ -116,7 +126,7 @@ impl CrdsFilter {
         let k = num_keys;
         (m / (-k / (1f64 - (p.ln() / k).exp()).ln())).ceil()
     }
-    fn mask_bits(num_items: f64, max_items: f64) -> u32 {
+    fn compute_mask_bits(num_items: f64, max_items: f64) -> u32 {
         // for small ratios this can result in a negative number, ensure it returns 0 instead
         ((num_items / max_items).log2().ceil()).max(0.0) as u32
     }
@@ -172,7 +182,7 @@ impl CrdsFilterSet {
         const MAX_NUM_FILTERS: usize = 1024;
         let max_bits = (max_bytes * 8) as f64;
         let max_items = CrdsFilter::max_items(max_bits, FALSE_RATE, KEYS);
-        let mask_bits = CrdsFilter::mask_bits(num_items as f64, max_items);
+        let mask_bits = CrdsFilter::compute_mask_bits(num_items as f64, max_items);
         let mut filters: Vec<_> = repeat_with(|| None).take(1usize << mask_bits).collect();
         let mut indices: Vec<_> = (0..filters.len()).collect();
         let size = filters.len().div_ceil(SAMPLE_RATE);
@@ -1364,7 +1374,7 @@ pub(crate) mod tests {
         assert_eq!(filter.mask, !0x0);
         assert_eq!(CrdsFilter::max_items(80f64, 0.01, 8f64), 9f64);
         //1000/9 = 111, so 7 bits are needed to mask it
-        assert_eq!(CrdsFilter::mask_bits(1000f64, 9f64), 7u32);
+        assert_eq!(CrdsFilter::compute_mask_bits(1000f64, 9f64), 7u32);
         let filter = CrdsFilter::new_rand(1000, 10);
         assert_eq!(filter.mask & 0x00_ffff_ffff, 0x00_ffff_ffff);
     }

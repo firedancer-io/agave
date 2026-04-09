@@ -56,4 +56,9 @@ extern crate solana_frozen_abi_macro;
 #[macro_use]
 extern crate solana_metrics;
 
+#[cfg(feature = "conformance")]
+mod harness;
+
+#[cfg(all(test, feature = "conformance"))]
+mod conformance;
 mod wire_format_tests;

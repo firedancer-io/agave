@@ -51,6 +51,12 @@ impl DuplicateShred {
     pub(crate) fn chunk_index(&self) -> u8 {
         self.chunk_index
     }
+
+    #[cfg(test)]
+    #[inline]
+    pub(crate) fn chunk(&self) -> &[u8] {
+        &self.chunk
+    }
 }
 
 #[derive(Debug, Error)]

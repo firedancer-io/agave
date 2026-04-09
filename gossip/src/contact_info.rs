@@ -238,6 +238,12 @@ impl ContactInfo {
         self.shred_version
     }
 
+    #[cfg(test)]
+    #[inline]
+    pub(crate) fn outset(&self) -> u64 {
+        self.outset
+    }
+
     #[inline]
     pub(crate) fn version(&self) -> &solana_version::Version {
         &self.version
