@@ -1422,70 +1422,20 @@ impl Bank {
         });
 
         // Following code may touch AccountsDb, requiring proper ancestors
-        let (_, update_epoch_time_us) = measure_us!({
-            if parent.epoch() < new.epoch() {
-                new.process_new_epoch(
-                    parent.epoch(),
-                    parent.slot(),
-                    parent.capitalization(),
-                    parent.block_height(),
-                    reward_calc_tracer,
-                );
-            } else {
-                // Save a snapshot of stakes for use in consensus and stake weighted networking
-                let leader_schedule_epoch = new.epoch_schedule().get_leader_schedule_epoch(slot);
-                new.update_epoch_stakes(leader_schedule_epoch);
-            }
-        });
-
-        let (_, distribute_rewards_time_us) =
-            measure_us!(new.distribute_partitioned_epoch_rewards());
-
-        let (_, cache_preparation_time_us) =
-            measure_us!(new.prepare_program_cache_for_upcoming_feature_set());
-
-        // Update sysvars before processing transactions
-        let (_, update_sysvars_time_us) = measure_us!({
-            new.update_slot_hashes();
-            new.update_stake_history(Some(parent.epoch()));
-            // Keep setting the tower clock sysvar till we have not migrated to Alpenglow.
-            if new.get_alpenglow_genesis_certificate().is_none() {
-                new.update_clock(Some(parent.epoch()));
-            }
-            new.update_last_restart_slot()
-        });
-
-        let (_, fill_sysvar_cache_time_us) = measure_us!(
-            new.transaction_processor
-                .fill_missing_sysvar_cache_entries(&new)
+        let prepare_timings = new.prepare_for_block_execution(
+            parent.epoch(),
+            parent.slot(),
+            parent.capitalization(),
+            parent.block_height(),
+            reward_calc_tracer,
         );
-
-        let (num_accounts_modified_this_slot, populate_cache_for_accounts_lt_hash_us) =
-            measure_us!({
-                // The cache for accounts lt hash needs to be made aware of accounts modified
-                // before transaction processing begins.  Otherwise we may calculate the wrong
-                // accounts lt hash due to having the wrong initial state of the account.  The
-                // lt hash cache's initial state must always be from an ancestor, and cannot be
-                // an intermediate state within this Bank's slot.  If the lt hash cache has the
-                // wrong initial account state, we'll mix out the wrong lt hash value, and thus
-                // have the wrong overall accounts lt hash, and diverge.
-                let accounts_modified_this_slot =
-                    new.rc.accounts.accounts_db.get_pubkeys_for_slot(slot);
-                let num_accounts_modified_this_slot = accounts_modified_this_slot.len();
-                for pubkey in accounts_modified_this_slot {
-                    new.cache_for_accounts_lt_hash
-                        .entry(pubkey)
-                        .or_insert(AccountsLtHashCacheValue::BankNew);
-                }
-                num_accounts_modified_this_slot
-            });
 
         time.stop();
         report_new_bank_metrics(
             slot,
             parent.slot(),
             new.block_height,
-            num_accounts_modified_this_slot,
+            prepare_timings.num_accounts_modified_this_slot,
             NewBankTimings {
                 bank_rc_creation_time_us,
                 total_elapsed_time_us: time.as_us(),
@@ -1500,12 +1450,13 @@ impl Bank {
                 transaction_log_collector_config_time_us,
                 feature_set_time_us,
                 ancestors_time_us,
-                update_epoch_time_us,
-                distribute_rewards_time_us,
-                cache_preparation_time_us,
-                update_sysvars_time_us,
-                fill_sysvar_cache_time_us,
-                populate_cache_for_accounts_lt_hash_us,
+                update_epoch_time_us: prepare_timings.update_epoch_time_us,
+                distribute_rewards_time_us: prepare_timings.distribute_rewards_time_us,
+                cache_preparation_time_us: prepare_timings.cache_preparation_time_us,
+                update_sysvars_time_us: prepare_timings.update_sysvars_time_us,
+                fill_sysvar_cache_time_us: prepare_timings.fill_sysvar_cache_time_us,
+                populate_cache_for_accounts_lt_hash_us: prepare_timings
+                    .populate_cache_for_accounts_lt_hash_us,
             },
         );
 
@@ -1868,7 +1819,7 @@ impl Bank {
             .expect("accounts must contain well-formed rent sysvar account")
     }
 
-    pub fn new_for_txn_fuzzing(
+    pub fn new_for_txn_tests(
         bank_rc: BankRc,
         fields: BankFieldsToDeserialize,
         feature_set: FeatureSet,
@@ -1919,7 +1870,7 @@ impl Bank {
             ),
             epoch_schedule: fields.epoch_schedule,
             inflation: Arc::new(RwLock::new(fields.inflation)),
-            stakes_cache: StakesCache::default(), /* Irrelevant for txn fuzzing */
+            stakes_cache: StakesCache::default(), /* Irrelevant for txn tests */
             epoch_stakes,
             is_delta: AtomicBool::new(fields.is_delta),
             rewards: RwLock::new(vec![]),
@@ -1966,11 +1917,12 @@ impl Bank {
         bank
     }
 
-    /// Create a bank for block fuzzing. Constructs the bank struct and
-    /// applies activated features. Call `prepare_for_block_execution` after
-    /// storing input accounts to complete the `_new_from_parent`-equivalent
-    /// initialization (epoch processing, sysvar updates, LT hash cache).
-    pub fn new_for_block_fuzzing(
+    /// Create a bank for block testing. Constructs the bank struct,
+    /// applies activated features, recalculates partitioned rewards if
+    /// mid-distribution, and runs `prepare_for_block_execution` to
+    /// complete the `_new_from_parent`-equivalent initialization
+    /// (epoch processing, sysvar updates, LT hash cache).
+    pub fn new_for_block_tests(
         bank_rc: BankRc,
         fields: BankFieldsToDeserialize,
         feature_set: FeatureSet,
@@ -1979,6 +1931,7 @@ impl Bank {
         accounts_data_size_initial: u64,
     ) -> Self {
         let epoch = fields.epoch_schedule.get_epoch(fields.slot);
+        let parent_epoch = fields.epoch_schedule.get_epoch(fields.parent_slot);
         let ancestors = Ancestors::from(vec![fields.slot]);
         let rent = Self::get_rent(&bank_rc, &ancestors);
         let mut bank = Self {
@@ -2058,61 +2011,111 @@ impl Bank {
         };
 
         bank.apply_activated_features();
-        bank
-    }
-
-    /// Complete bank initialization for block fuzzing. Must be called after
-    /// input accounts have been stored in the bank. Mirrors the post-construction
-    /// sequence of `_new_from_parent`: epoch processing, sysvar updates, and
-    /// LT hash cache population.
-    pub fn prepare_for_block_execution(&mut self) {
-        let parent_epoch = self.epoch_schedule.get_epoch(self.parent_slot);
-        let slot = self.slot;
 
         // If booting mid-distribution, recalculate reward partitions from the
-        // EpochRewards sysvar (mirrors initialize_after_snapshot_restore and
-        // FD's fd_rewards_recalculate_partitioned_rewards).
-        self.recalculate_partitioned_rewards_if_active(|| {
+        // EpochRewards sysvar (mirrors initialize_after_snapshot_restore).
+        bank.recalculate_partitioned_rewards_if_active(|| {
             rayon::ThreadPoolBuilder::new()
                 .num_threads(1)
                 .build()
                 .expect("single-threaded rayon pool")
         });
 
-        // Epoch boundary processing (mirrors _new_from_parent)
-        // process_new_epoch takes the PARENT's block_height (self.block_height - 1)
-        if parent_epoch < self.epoch {
-            self.process_new_epoch(
-                parent_epoch,
-                self.parent_slot,
-                self.capitalization(),
-                self.block_height.saturating_sub(1),
-                null_tracer(),
-            );
-        } else {
-            let leader_schedule_epoch = self.epoch_schedule.get_leader_schedule_epoch(slot);
-            self.update_epoch_stakes(leader_schedule_epoch);
-        }
-        self.distribute_partitioned_epoch_rewards();
+        let parent_capitalization = bank.capitalization();
+        let parent_slot = bank.parent_slot;
+        let parent_block_height = bank.block_height.saturating_sub(1);
+        bank.prepare_for_block_execution(
+            parent_epoch,
+            parent_slot,
+            parent_capitalization,
+            parent_block_height,
+            null_tracer(),
+        );
 
-        self.prepare_program_cache_for_upcoming_feature_set();
+        bank
+    }
 
-        // Update sysvars before processing transactions (mirrors _new_from_parent)
-        self.update_slot_hashes();
-        self.update_stake_history(Some(parent_epoch));
-        self.update_clock(Some(parent_epoch));
-        self.update_last_restart_slot();
+    /// Complete bank initialization for block execution. Performs epoch
+    /// processing, sysvar updates, program cache preparation, and LT hash
+    /// cache population -- the post-construction sequence shared by
+    /// `_new_from_parent` and the block-test path.
+    fn prepare_for_block_execution(
+        &mut self,
+        parent_epoch: Epoch,
+        parent_slot: Slot,
+        parent_capitalization: u64,
+        parent_block_height: u64,
+        reward_calc_tracer: Option<impl RewardCalcTracer>,
+    ) -> PrepareBlockExecutionTimings {
+        let slot = self.slot;
 
-        self.transaction_processor
-            .fill_missing_sysvar_cache_entries(self);
+        // Following code may touch AccountsDb, requiring proper ancestors
+        let (_, update_epoch_time_us) = measure_us!({
+            if parent_epoch < self.epoch() {
+                self.process_new_epoch(
+                    parent_epoch,
+                    parent_slot,
+                    parent_capitalization,
+                    parent_block_height,
+                    reward_calc_tracer,
+                );
+            } else {
+                // Save a snapshot of stakes for use in consensus and stake weighted networking
+                let leader_schedule_epoch = self.epoch_schedule().get_leader_schedule_epoch(slot);
+                self.update_epoch_stakes(leader_schedule_epoch);
+            }
+        });
 
-        // Populate the LT hash cache (mirrors _new_from_parent)
-        let accounts_modified_this_slot =
-            self.rc.accounts.accounts_db.get_pubkeys_for_slot(slot);
-        for pubkey in accounts_modified_this_slot {
-            self.cache_for_accounts_lt_hash
-                .entry(pubkey)
-                .or_insert(AccountsLtHashCacheValue::BankNew);
+        let (_, distribute_rewards_time_us) =
+            measure_us!(self.distribute_partitioned_epoch_rewards());
+
+        let (_, cache_preparation_time_us) =
+            measure_us!(self.prepare_program_cache_for_upcoming_feature_set());
+
+        // Update sysvars before processing transactions
+        let (_, update_sysvars_time_us) = measure_us!({
+            self.update_slot_hashes();
+            self.update_stake_history(Some(parent_epoch));
+            // Keep setting the tower clock sysvar till we have not migrated to Alpenglow.
+            if self.get_alpenglow_genesis_certificate().is_none() {
+                self.update_clock(Some(parent_epoch));
+            }
+            self.update_last_restart_slot()
+        });
+
+        let (_, fill_sysvar_cache_time_us) = measure_us!(
+            self.transaction_processor
+                .fill_missing_sysvar_cache_entries(self)
+        );
+
+        let (num_accounts_modified_this_slot, populate_cache_for_accounts_lt_hash_us) =
+            measure_us!({
+                // The cache for accounts lt hash needs to be made aware of accounts modified
+                // before transaction processing begins.  Otherwise we may calculate the wrong
+                // accounts lt hash due to having the wrong initial state of the account.  The
+                // lt hash cache's initial state must always be from an ancestor, and cannot be
+                // an intermediate state within this Bank's slot.  If the lt hash cache has the
+                // wrong initial account state, we'll mix out the wrong lt hash value, and thus
+                // have the wrong overall accounts lt hash, and diverge.
+                let accounts_modified_this_slot =
+                    self.rc.accounts.accounts_db.get_pubkeys_for_slot(slot);
+                let num_accounts_modified_this_slot = accounts_modified_this_slot.len();
+                for pubkey in accounts_modified_this_slot {
+                    self.cache_for_accounts_lt_hash
+                        .entry(pubkey)
+                        .or_insert(AccountsLtHashCacheValue::BankNew);
+                }
+                num_accounts_modified_this_slot
+            });
+
+        PrepareBlockExecutionTimings {
+            update_epoch_time_us,
+            distribute_rewards_time_us,
+            cache_preparation_time_us,
+            update_sysvars_time_us,
+            fill_sysvar_cache_time_us,
+            num_accounts_modified_this_slot,
+            populate_cache_for_accounts_lt_hash_us,
         }
     }
 
