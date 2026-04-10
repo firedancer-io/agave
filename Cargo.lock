@@ -8544,6 +8544,8 @@ dependencies = [
  "log",
  "num-traits",
  "num_cpus",
+ "prost 0.11.9",
+ "protosol",
  "rand 0.9.4",
  "rand_chacha 0.9.0",
  "rayon",
@@ -8604,27 +8606,6 @@ dependencies = [
  "solana-net-utils",
  "solana-pubkey 4.2.0",
  "solana-version",
-]
-
-[[package]]
-name = "solana-gossip-conformance"
-version = "4.1.0-alpha.0"
-dependencies = [
- "bincode",
- "bv",
- "prost 0.11.9",
- "protosol",
- "solana-bloom",
- "solana-gossip",
- "solana-hash 4.3.0",
- "solana-keypair",
- "solana-packet 4.1.0",
- "solana-perf",
- "solana-pubkey 4.2.0",
- "solana-sanitize",
- "solana-signer",
- "solana-transaction",
- "solana-vote-program",
 ]
 
 [[package]]

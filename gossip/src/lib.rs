@@ -57,5 +57,5 @@ extern crate solana_frozen_abi_macro;
 extern crate solana_metrics;
 
 #[cfg(feature = "conformance")]
-pub use protocol::{Ping, Protocol, PruneData};
+pub(crate) mod conformance;
 mod wire_format_tests;

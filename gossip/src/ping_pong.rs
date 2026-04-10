@@ -122,7 +122,7 @@ impl Pong {
         &self.from
     }
 
-    pub fn signature(&self) -> &Signature {
+    pub(crate) fn signature(&self) -> &Signature {
         &self.signature
     }
 }
