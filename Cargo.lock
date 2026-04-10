@@ -8783,6 +8783,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "solana-gossip-conformance"
+version = "4.1.0-alpha.0"
+dependencies = [
+ "bincode",
+ "bv",
+ "prost 0.11.9",
+ "protosol",
+ "solana-bloom",
+ "solana-gossip",
+ "solana-hash 4.3.0",
+ "solana-keypair",
+ "solana-packet 4.1.0",
+ "solana-perf",
+ "solana-pubkey 4.2.0",
+ "solana-sanitize",
+ "solana-signer",
+ "solana-transaction",
+ "solana-vote-program",
+]
+
+[[package]]
 name = "solana-hard-forks"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

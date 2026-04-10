@@ -29,6 +29,8 @@ frozen-abi = [
     "solana-vote-program/frozen-abi",
 ]
 agave-unstable-api = []
+dev-context-only-utils = []
+conformance = []
 
 [dependencies]
 agave-feature-set = { workspace = true }
