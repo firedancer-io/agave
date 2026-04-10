@@ -47,7 +47,7 @@ pub(crate) const PULL_RESPONSE_MIN_SERIALIZED_SIZE: usize = 161;
 /// Gossip protocol messages base enum
 #[derive(Serialize, Deserialize, Debug)]
 #[allow(clippy::large_enum_variant)]
-pub(crate) enum Protocol {
+pub enum Protocol {
     PullRequest(CrdsFilter, CrdsValue),
     PullResponse(Pubkey, Vec<CrdsValue>),
     PushMessage(Pubkey, Vec<CrdsValue>),
@@ -59,22 +59,22 @@ pub(crate) enum Protocol {
     // Update count_packets_received if new variants are added here.
 }
 
-pub(crate) type Ping = ping_pong::Ping<GOSSIP_PING_TOKEN_SIZE>;
+pub type Ping = ping_pong::Ping<GOSSIP_PING_TOKEN_SIZE>;
 pub(crate) type PingCache = ping_pong::PingCache<GOSSIP_PING_TOKEN_SIZE>;
 
 #[cfg_attr(feature = "frozen-abi", derive(AbiExample))]
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
-pub(crate) struct PruneData {
+pub struct PruneData {
     /// Pubkey of the node that sent this prune data
-    pub(crate) pubkey: Pubkey,
+    pub pubkey: Pubkey,
     /// Pubkeys of nodes that should be pruned
-    pub(crate) prunes: Vec<Pubkey>,
+    pub prunes: Vec<Pubkey>,
     /// Signature of this Prune Message
-    pub(crate) signature: Signature,
+    pub signature: Signature,
     /// The Pubkey of the intended node/destination for this message
-    pub(crate) destination: Pubkey,
+    pub destination: Pubkey,
     /// Wallclock of the node that generated this message
-    pub(crate) wallclock: u64,
+    pub wallclock: u64,
 }
 
 impl Protocol {

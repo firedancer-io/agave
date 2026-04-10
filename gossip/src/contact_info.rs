@@ -238,9 +238,9 @@ impl ContactInfo {
         self.shred_version
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "conformance"))]
     #[inline]
-    pub(crate) fn outset(&self) -> u64 {
+    pub fn outset(&self) -> u64 {
         self.outset
     }
 

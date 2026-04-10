@@ -57,8 +57,5 @@ extern crate solana_frozen_abi_macro;
 extern crate solana_metrics;
 
 #[cfg(feature = "conformance")]
-mod harness;
-
-#[cfg(all(test, feature = "conformance"))]
-mod conformance;
+pub use protocol::{Ping, Protocol, PruneData};
 mod wire_format_tests;

@@ -41,6 +41,7 @@ members = [
     "geyser-plugin-manager",
     "gossip",
     "gossip-cli",
+    "gossip/conformance",
     "install",
     "io-uring",
     "keygen",
@@ -131,12 +132,7 @@ members = [
     "xdp-ebpf",
 ]
 
-exclude = [
-    "ci/xtask",
-    "dev-bins",
-    "programs/sbf",
-    "svm/tests/example-programs",
-]
+exclude = ["ci/xtask", "dev-bins", "programs/sbf", "svm/tests/example-programs"]
 
 resolver = "2"
 
