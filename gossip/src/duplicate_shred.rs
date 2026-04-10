@@ -43,36 +43,36 @@ pub struct DuplicateShred {
 
 impl DuplicateShred {
     #[inline]
-    pub fn num_chunks(&self) -> u8 {
+    pub(crate) fn num_chunks(&self) -> u8 {
         self.num_chunks
     }
 
     #[inline]
-    pub fn chunk_index(&self) -> u8 {
+    pub(crate) fn chunk_index(&self) -> u8 {
         self.chunk_index
     }
 
     #[cfg(any(test, feature = "conformance"))]
     #[inline]
-    pub fn from(&self) -> &Pubkey {
+    pub(crate) fn from(&self) -> &Pubkey {
         &self.from
     }
 
     #[cfg(any(test, feature = "conformance"))]
     #[inline]
-    pub fn wallclock(&self) -> u64 {
+    pub(crate) fn wallclock(&self) -> u64 {
         self.wallclock
     }
 
     #[cfg(any(test, feature = "conformance"))]
     #[inline]
-    pub fn slot(&self) -> Slot {
+    pub(crate) fn slot(&self) -> Slot {
         self.slot
     }
 
     #[cfg(any(test, feature = "conformance"))]
     #[inline]
-    pub fn chunk(&self) -> &[u8] {
+    pub(crate) fn chunk(&self) -> &[u8] {
         &self.chunk
     }
 }

@@ -297,12 +297,12 @@ pub struct LowestSlot {
 
 impl LowestSlot {
     #[cfg(any(test, feature = "conformance"))]
-    pub fn wallclock(&self) -> u64 {
+    pub(crate) fn wallclock(&self) -> u64 {
         self.wallclock
     }
 
     #[cfg(any(test, feature = "conformance"))]
-    pub fn from(&self) -> &Pubkey {
+    pub(crate) fn from(&self) -> &Pubkey {
         &self.from
     }
 
@@ -403,17 +403,17 @@ impl Vote {
         }
     }
 
-    pub fn transaction(&self) -> &Transaction {
+    pub(crate) fn transaction(&self) -> &Transaction {
         &self.transaction
     }
 
     #[cfg(any(test, feature = "conformance"))]
-    pub fn from(&self) -> &Pubkey {
+    pub(crate) fn from(&self) -> &Pubkey {
         &self.from
     }
 
     #[cfg(any(test, feature = "conformance"))]
-    pub fn vote_wallclock(&self) -> u64 {
+    pub(crate) fn vote_wallclock(&self) -> u64 {
         self.wallclock
     }
 

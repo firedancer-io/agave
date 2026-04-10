@@ -4,12 +4,12 @@
 mod tests;
 
 use {
-    solana_gossip::{
+    crate::{
         crds_data::CrdsData,
         crds_gossip_pull::CrdsFilter as NativeCrdsFilter,
         crds_value::CrdsValue as NativeCrdsValue,
         ping_pong::Pong,
-        Protocol, Ping, PruneData,
+        protocol::{Ping, Protocol, PruneData},
     },
     protosol::protos::{
         gossip_crds_data, gossip_msg, GossipBloom, GossipContactInfo, GossipCrdsData,
@@ -187,7 +187,7 @@ fn convert_protocol(proto: &Protocol) -> gossip_msg::Msg {
     }
 }
 
-pub fn gossip_decode_to_effects(input: &[u8]) -> GossipEffects {
+pub(crate) fn gossip_decode_to_effects(input: &[u8]) -> GossipEffects {
     use {bincode::Options, solana_perf::packet::PACKET_DATA_SIZE, solana_sanitize::Sanitize};
 
     let result = bincode::options()

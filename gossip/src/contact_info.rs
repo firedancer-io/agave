@@ -240,7 +240,7 @@ impl ContactInfo {
 
     #[cfg(any(test, feature = "conformance"))]
     #[inline]
-    pub fn outset(&self) -> u64 {
+    pub(crate) fn outset(&self) -> u64 {
         self.outset
     }
 
