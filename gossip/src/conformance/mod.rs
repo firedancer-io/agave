@@ -187,7 +187,7 @@ fn convert_protocol(proto: &Protocol) -> gossip_msg::Msg {
     }
 }
 
-pub(crate) fn gossip_decode_to_effects(input: &[u8]) -> GossipEffects {
+pub fn gossip_decode_to_effects(input: &[u8]) -> GossipEffects {
     use {bincode::Options, solana_perf::packet::PACKET_DATA_SIZE, solana_sanitize::Sanitize};
 
     let result = bincode::options()
