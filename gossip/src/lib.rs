@@ -56,4 +56,6 @@ extern crate solana_frozen_abi_macro;
 #[macro_use]
 extern crate solana_metrics;
 
+#[cfg(feature = "conformance")]
+pub mod conformance;
 mod wire_format_tests;
