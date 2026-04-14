@@ -308,7 +308,7 @@ pub fn gossip_decode_to_effects(input: &[u8]) -> protosol::protos::GossipEffects
         GossipCrdsFilter {
             filter: Some(convert_bloom(&filter.filter)),
             mask: filter.mask(),
-            mask_bits: filter.mask_bits(),
+            mask_bits: filter.get_mask_bits(),
         }
     }
 
