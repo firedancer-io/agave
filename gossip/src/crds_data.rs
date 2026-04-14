@@ -306,7 +306,7 @@ impl LowestSlot {
         &self.from
     }
 
-    pub(crate) fn new(from: Pubkey, lowest: Slot, wallclock: u64) -> Self {
+    pub fn new(from: Pubkey, lowest: Slot, wallclock: u64) -> Self {
         Self {
             from,
             root: 0,

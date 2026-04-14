@@ -1,9 +1,11 @@
+#![cfg(feature = "conformance")]
+
 //! Gossip conformance tests and fixture generation.
 
 use protosol::protos::{gossip_crds_data, gossip_msg, GossipEffects};
 
 fn get_effects(input: &[u8]) -> GossipEffects {
-    super::gossip_decode_to_effects(input)
+    solana_gossip::conformance::gossip_decode_to_effects(input)
 }
 
 fn check(input: &[u8], expect_valid: bool) {
@@ -143,7 +145,7 @@ fn make_crds_value_bytes(signature: &[u8; 64], crds_data: &[u8]) -> Vec<u8> {
 /// Build a raw ContactInfo CrdsData (variant 11).
 /// ContactInfo is a complex serialized struct; this builds a minimal valid one.
 fn make_contact_info_crds_data(pubkey: &[u8; 32], wallclock: u64) -> Vec<u8> {
-    use crate::{contact_info::ContactInfo, crds_data::CrdsData};
+    use solana_gossip::{contact_info::ContactInfo, crds_data::CrdsData};
     let ci = ContactInfo::new(
         solana_pubkey::Pubkey::from(*pubkey),
         wallclock,
@@ -179,7 +181,7 @@ fn make_snapshot_hashes_crds_data(
 /// Build a raw EpochSlots CrdsData (variant 5).
 fn make_epoch_slots_crds_data(index: u8, from: &[u8; 32], wallclock: u64) -> Vec<u8> {
     // EpochSlots is serialized by bincode. Build and serialize.
-    use crate::{crds_data::CrdsData, epoch_slots::EpochSlots};
+    use solana_gossip::{crds_data::CrdsData, epoch_slots::EpochSlots};
     let mut es = EpochSlots::new(solana_pubkey::Pubkey::from(*from), wallclock);
     es.from = solana_pubkey::Pubkey::from(*from);
     bincode::serialize(&CrdsData::EpochSlots(index, es)).unwrap()
@@ -192,7 +194,7 @@ fn make_lowest_slot_crds_data(
     lowest: u64,
     wallclock: u64,
 ) -> Vec<u8> {
-    use crate::crds_data::{CrdsData, LowestSlot};
+    use solana_gossip::crds_data::{CrdsData, LowestSlot};
     let ls = LowestSlot::new(solana_pubkey::Pubkey::from(*from), lowest, wallclock);
     let mut data = bincode::serialize(&CrdsData::LowestSlot(0, ls)).unwrap();
     // Patch the index byte (offset 4 in the serialized CrdsData)
@@ -212,7 +214,7 @@ fn make_pull_request_bytes(filter_bytes: &[u8], value_bytes: &[u8]) -> Vec<u8> {
 /// Build a serialized CrdsFilter. The Bloom filter has a complex layout,
 /// so we construct and serialize the Rust object.
 fn make_crds_filter_bytes() -> Vec<u8> {
-    use crate::crds_gossip_pull::CrdsFilter;
+    use solana_gossip::crds_gossip_pull::CrdsFilter;
     bincode::serialize(&CrdsFilter::new_rand(1, 128)).unwrap()
 }
 
@@ -220,7 +222,7 @@ fn make_crds_filter_bytes() -> Vec<u8> {
 /// The inner Transaction is complex; we construct and serialize via Rust objects.
 fn make_vote_crds_data(index: u8, from: &[u8; 32], wallclock: u64) -> Vec<u8> {
     use {
-        crate::crds_data::{CrdsData, Vote as CrdsVote},
+        solana_gossip::crds_data::{CrdsData, Vote as CrdsVote},
         solana_keypair::Keypair,
         solana_signer::Signer,
         solana_vote_program::{vote_instruction, vote_state::Vote},
