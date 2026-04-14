@@ -1,8 +1,5 @@
 //! Gossip differential conformance testing.
 
-#[cfg(test)]
-mod tests;
-
 use {
     crate::{
         crds_data::CrdsData,
