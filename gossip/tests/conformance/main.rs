@@ -11,7 +11,7 @@ use protosol::protos::{gossip_msg, GossipEffects};
 pub(crate) const MAX_WALLCLOCK: u64 = 1_000_000_000_000_000;
 
 pub(crate) fn get_effects(input: &[u8]) -> GossipEffects {
-    solana_gossip::conformance::gossip_decode_to_effects(input)
+    solana_gossip::gossip_decode_to_effects(input)
 }
 
 pub(crate) fn check(input: &[u8], expect_valid: bool) {
