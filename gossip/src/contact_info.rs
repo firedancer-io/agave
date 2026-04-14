@@ -238,7 +238,7 @@ impl ContactInfo {
         self.shred_version
     }
 
-    #[cfg(any(test, feature = "conformance"))]
+    #[cfg(any(test, feature = "dev-context-only-utils"))]
     #[inline]
     pub(crate) fn outset(&self) -> u64 {
         self.outset
