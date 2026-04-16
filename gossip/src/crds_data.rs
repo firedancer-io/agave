@@ -296,17 +296,7 @@ pub struct LowestSlot {
 }
 
 impl LowestSlot {
-    #[cfg(any(test, feature = "dev-context-only-utils"))]
-    pub(crate) fn wallclock(&self) -> u64 {
-        self.wallclock
-    }
-
-    #[cfg(any(test, feature = "dev-context-only-utils"))]
-    pub(crate) fn from(&self) -> &Pubkey {
-        &self.from
-    }
-
-    pub fn new(from: Pubkey, lowest: Slot, wallclock: u64) -> Self {
+    pub(crate) fn new(from: Pubkey, lowest: Slot, wallclock: u64) -> Self {
         Self {
             from,
             root: 0,
@@ -405,16 +395,6 @@ impl Vote {
 
     pub(crate) fn transaction(&self) -> &Transaction {
         &self.transaction
-    }
-
-    #[cfg(any(test, feature = "dev-context-only-utils"))]
-    pub(crate) fn from(&self) -> &Pubkey {
-        &self.from
-    }
-
-    #[cfg(any(test, feature = "dev-context-only-utils"))]
-    pub(crate) fn vote_wallclock(&self) -> u64 {
-        self.wallclock
     }
 
     pub(crate) fn slot(&self) -> Option<Slot> {
