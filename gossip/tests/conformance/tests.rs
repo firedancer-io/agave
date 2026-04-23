@@ -204,6 +204,61 @@ fn test_conformance_pull_response_valid() {
     }
 }
 
+#[test]
+fn test_conformance_contact_info_extra_fields() {
+    use protosol::protos::gossip_ip_addr;
+
+    let pk = [0x44; 32];
+    let ci_data = make_contact_info_localhost_crds_data(&pk, 1_000_000);
+    let crds_val = make_crds_value_bytes(&[0u8; 64], &ci_data);
+    let data = make_push_message_bytes(&pk, &[crds_val]);
+    check(&data, true);
+
+    let effects = get_effects(&data);
+    let msg = unwrap_msg(&effects);
+    match msg {
+        gossip_msg::Msg::PushMessage(pm) => {
+            assert_eq!(pm.values.len(), 1);
+            let crds_data = pm.values[0].data.as_ref().unwrap();
+            match crds_data.data.as_ref().unwrap() {
+                gossip_crds_data::Data::ContactInfo(ci) => {
+                    assert_eq!(ci.pubkey, pk);
+
+                    let _ = (ci.version_major, ci.version_minor, ci.version_patch);
+                    let _ = (ci.version_commit, ci.version_feature_set, ci.version_client);
+
+                    // Deduped 127.0.0.1 addr.
+                    assert!(!ci.addrs.is_empty(), "expected at least one addr");
+                    match ci.addrs[0].addr.as_ref().unwrap() {
+                        gossip_ip_addr::Addr::Ipv4(v4) => {
+                            assert_eq!(
+                                *v4,
+                                u32::from(std::net::Ipv4Addr::LOCALHOST),
+                                "expected 127.0.0.1"
+                            );
+                        }
+                        other => panic!("expected IPv4 addr, got {other:?}"),
+                    }
+
+                    // 10 sockets, all referencing the single addr.
+                    assert!(
+                        ci.sockets.len() >= 8,
+                        "expected >=8 sockets, got {}",
+                        ci.sockets.len()
+                    );
+                    for s in &ci.sockets {
+                        assert_eq!(s.index, 0, "all sockets should reference addr index 0");
+                    }
+
+                    assert!(ci.extensions.is_empty(), "extensions should be empty");
+                }
+                other => panic!("expected ContactInfo, got {other:?}"),
+            }
+        }
+        other => panic!("expected PushMessage, got {other:?}"),
+    }
+}
+
 // PushMessage tests
 
 #[test]

@@ -119,6 +119,14 @@ pub(crate) fn make_contact_info_crds_data(pubkey: &[u8; 32], wallclock: u64) -> 
     bincode::serialize(&CrdsData::ContactInfo(ci)).unwrap()
 }
 
+/// Build a ContactInfo CrdsData with localhost sockets populated.
+pub(crate) fn make_contact_info_localhost_crds_data(pubkey: &[u8; 32], wallclock: u64) -> Vec<u8> {
+    use solana_gossip::{contact_info::ContactInfo, crds_data::CrdsData};
+    let mut ci = ContactInfo::new_localhost(&solana_pubkey::Pubkey::from(*pubkey), wallclock);
+    ci.set_wallclock(wallclock);
+    bincode::serialize(&CrdsData::ContactInfo(ci)).unwrap()
+}
+
 /// Build a raw SnapshotHashes CrdsData (variant 10).
 pub(crate) fn make_snapshot_hashes_crds_data(
     from: &[u8; 32],
