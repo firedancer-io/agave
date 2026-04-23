@@ -1,11 +1,10 @@
-use {
-    super::get_effects,
-    crate::helpers::*,
-};
+use {super::get_effects, crate::helpers::*};
 
 fn write_fixture(dir: &std::path::Path, name: &str, input: &[u8]) {
-    use prost::Message;
-    use protosol::protos::{FixtureMetadata, GossipFixture};
+    use {
+        prost::Message,
+        protosol::protos::{FixtureMetadata, GossipFixture},
+    };
 
     let effects = get_effects(input);
     let fixture = GossipFixture {
@@ -23,7 +22,8 @@ fn write_fixture(dir: &std::path::Path, name: &str, input: &[u8]) {
 }
 
 /// Generate protobuf fixture files for cross-implementation conformance
-/// testing.
+/// testing. Ignored because it writes to disk and is meant to be run
+/// manually: `FIXTURE_DIR=<path> cargo test -p solana-gossip --test conformance -- --ignored`
 #[test]
 #[ignore]
 fn generate_gossip_fixtures() {
@@ -85,15 +85,27 @@ fn generate_gossip_fixtures() {
     {
         let ci = make_contact_info_crds_data(&pk, 1_000_000);
         let val = make_crds_value_bytes(&sig, &ci);
-        write_fixture(&dir, "pull_response_valid", &make_pull_response_bytes(&pk, &[val]));
+        write_fixture(
+            &dir,
+            "pull_response_valid",
+            &make_pull_response_bytes(&pk, &[val]),
+        );
     }
-    write_fixture(&dir, "pull_response_empty", &make_pull_response_bytes(&pk, &[]));
+    write_fixture(
+        &dir,
+        "pull_response_empty",
+        &make_pull_response_bytes(&pk, &[]),
+    );
 
     // PushMessage
     {
         let ci = make_contact_info_crds_data(&pk, 1_000_000);
         let val = make_crds_value_bytes(&sig, &ci);
-        write_fixture(&dir, "push_message_valid", &make_push_message_bytes(&pk, &[val]));
+        write_fixture(
+            &dir,
+            "push_message_valid",
+            &make_push_message_bytes(&pk, &[val]),
+        );
     }
     {
         let ci = make_contact_info_crds_data(&pk, 1_000_000);
@@ -127,7 +139,8 @@ fn generate_gossip_fixtures() {
         );
     }
     {
-        let sh = make_snapshot_hashes_crds_data(&pk, 1_000_000_000_000_000, &[0xAA; 32], &[], 1_000_000);
+        let sh =
+            make_snapshot_hashes_crds_data(&pk, 1_000_000_000_000_000, &[0xAA; 32], &[], 1_000_000);
         let val = make_crds_value_bytes(&sig, &sh);
         write_fixture(
             &dir,
@@ -136,7 +149,8 @@ fn generate_gossip_fixtures() {
         );
     }
     {
-        let sh = make_snapshot_hashes_crds_data(&pk, 100, &[0xAA; 32], &[(50, [0xBB; 32])], 1_000_000);
+        let sh =
+            make_snapshot_hashes_crds_data(&pk, 100, &[0xAA; 32], &[(50, [0xBB; 32])], 1_000_000);
         let val = make_crds_value_bytes(&sig, &sh);
         write_fixture(
             &dir,

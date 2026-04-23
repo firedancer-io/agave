@@ -259,22 +259,22 @@ pub(crate) fn split_gossip_messages<T: Serialize + Debug>(
 pub fn gossip_decode_to_effects(input: &[u8]) -> protosol::protos::GossipEffects {
     use {
         crate::{
-            crds_data::CrdsData,
-            crds_gossip_pull::CrdsFilter as NativeCrdsFilter,
-            crds_value::CrdsValue as NativeCrdsValue,
-            ping_pong::Pong,
+            crds_data::CrdsData, crds_gossip_pull::CrdsFilter as NativeCrdsFilter,
+            crds_value::CrdsValue as NativeCrdsValue, ping_pong::Pong,
         },
+        bincode::Options as _,
         bv::Bits,
         protosol::protos::{
-            gossip_crds_data, gossip_msg, GossipBloom, GossipContactInfo, GossipCrdsData,
+            GossipBloom, GossipCompressedSlots, GossipContactInfo, GossipCrdsData,
             GossipCrdsFilter, GossipCrdsValue, GossipDuplicateShred, GossipEffects,
-            GossipEpochSlots, GossipIncrementalHash, GossipLowestSlot, GossipMsg, GossipPing,
-            GossipPong, GossipPruneData, GossipPruneMessage, GossipPullRequest,
-            GossipPullResponse, GossipPushMessage, GossipSnapshotHashes, GossipVote,
+            GossipEpochSlots, GossipIncrementalHash, GossipIpAddr, GossipIpv6Addr,
+            GossipLowestSlot, GossipMsg, GossipPing, GossipPong, GossipPruneData,
+            GossipPruneMessage, GossipPullRequest, GossipPullResponse, GossipPushMessage,
+            GossipSnapshotHashes, GossipSocketEntry, GossipVote, gossip_compressed_slots,
+            gossip_crds_data, gossip_ip_addr, gossip_msg,
         },
         solana_sanitize::Sanitize,
     };
-    use bincode::Options as _;
 
     fn convert_ping(ping: &Ping) -> gossip_msg::Msg {
         gossip_msg::Msg::Ping(GossipPing {
@@ -305,21 +305,57 @@ pub fn gossip_decode_to_effects(input: &[u8]) -> protosol::protos::GossipEffects
     }
 
     fn convert_crds_filter(filter: &NativeCrdsFilter) -> GossipCrdsFilter {
+        let mask_bits = filter.get_mask_bits();
         GossipCrdsFilter {
             filter: Some(convert_bloom(&filter.filter)),
-            mask: filter.mask(),
-            mask_bits: filter.get_mask_bits(),
+            mask: NativeCrdsFilter::canonical_mask(filter.mask(), mask_bits),
+            mask_bits,
         }
     }
 
     fn convert_crds_data(data: &CrdsData) -> GossipCrdsData {
         let converted = match data {
             CrdsData::ContactInfo(ci) => {
+                let v = ci.version();
                 Some(gossip_crds_data::Data::ContactInfo(GossipContactInfo {
                     pubkey: ci.pubkey().to_bytes().to_vec(),
                     wallclock: ci.wallclock(),
                     outset: ci.outset(),
                     shred_version: ci.shred_version() as u32,
+                    version_major: v.major() as u32,
+                    version_minor: v.minor() as u32,
+                    version_patch: v.patch() as u32,
+                    version_commit: v.commit(),
+                    version_feature_set: v.feature_set(),
+                    version_client: u16::try_from(v.client().clone()).unwrap_or(0) as u32,
+                    addrs: ci
+                        .addrs()
+                        .iter()
+                        .map(|a| GossipIpAddr {
+                            addr: Some(match a {
+                                std::net::IpAddr::V4(v4) => {
+                                    gossip_ip_addr::Addr::Ipv4(u32::from(*v4))
+                                }
+                                std::net::IpAddr::V6(v6) => {
+                                    let octets = v6.octets();
+                                    gossip_ip_addr::Addr::Ipv6(GossipIpv6Addr {
+                                        hi: u64::from_be_bytes(octets[..8].try_into().unwrap()),
+                                        lo: u64::from_be_bytes(octets[8..].try_into().unwrap()),
+                                    })
+                                }
+                            }),
+                        })
+                        .collect(),
+                    sockets: ci
+                        .sockets()
+                        .iter()
+                        .map(|s| GossipSocketEntry {
+                            key: s.key as u32,
+                            index: s.index as u32,
+                            offset: s.offset as u32,
+                        })
+                        .collect(),
+                    extensions: vec![],
                 }))
             }
             CrdsData::Vote(idx, vote) => {
@@ -327,7 +363,7 @@ pub fn gossip_decode_to_effects(input: &[u8]) -> protosol::protos::GossipEffects
                 Some(gossip_crds_data::Data::Vote(GossipVote {
                     index: *idx as u32,
                     from: vote.from().to_bytes().to_vec(),
-                    wallclock: vote.vote_wallclock(),
+                    wallclock: vote.wallclock(),
                     transaction: tx_bytes,
                 }))
             }
@@ -340,45 +376,67 @@ pub fn gossip_decode_to_effects(input: &[u8]) -> protosol::protos::GossipEffects
                 }))
             }
             CrdsData::EpochSlots(idx, es) => {
+                use crate::epoch_slots::CompressedSlots;
+                let slots = es
+                    .slots
+                    .iter()
+                    .map(|cs| match cs {
+                        CompressedSlots::Uncompressed(u) => {
+                            let mut bits = Vec::new();
+                            for i in 0..u.slots.block_len() {
+                                bits.extend_from_slice(&u.slots.get_block(i).to_le_bytes());
+                            }
+                            GossipCompressedSlots {
+                                first_slot: u.first_slot,
+                                num: u.num as u64,
+                                data: Some(gossip_compressed_slots::Data::Uncompressed(bits)),
+                            }
+                        }
+                        CompressedSlots::Flate2(f) => GossipCompressedSlots {
+                            first_slot: f.first_slot,
+                            num: f.num as u64,
+                            data: Some(gossip_compressed_slots::Data::Flate2(
+                                f.compressed.to_vec(),
+                            )),
+                        },
+                    })
+                    .collect();
                 Some(gossip_crds_data::Data::EpochSlots(GossipEpochSlots {
                     index: *idx as u32,
                     from: es.from.to_bytes().to_vec(),
                     wallclock: es.wallclock,
+                    slots,
                 }))
             }
-            CrdsData::SnapshotHashes(sh) => {
-                Some(gossip_crds_data::Data::SnapshotHashes(
-                    GossipSnapshotHashes {
-                        from: sh.from.to_bytes().to_vec(),
-                        full_slot: sh.full.0,
-                        full_hash: sh.full.1.to_bytes().to_vec(),
-                        incremental: sh
-                            .incremental
-                            .iter()
-                            .map(|(slot, hash)| GossipIncrementalHash {
-                                slot: *slot,
-                                hash: hash.to_bytes().to_vec(),
-                            })
-                            .collect(),
-                        wallclock: sh.wallclock,
-                    },
-                ))
-            }
-            CrdsData::DuplicateShred(idx, ds) => {
-                Some(gossip_crds_data::Data::DuplicateShred(
-                    GossipDuplicateShred {
-                        index: *idx as u32,
-                        from: ds.from().to_bytes().to_vec(),
-                        wallclock: ds.wallclock(),
-                        slot: ds.slot(),
-                        shred_index: 0,
-                        shred_type: 0,
-                        num_chunks: ds.num_chunks() as u32,
-                        chunk_index: ds.chunk_index() as u32,
-                        chunk: ds.chunk().to_vec(),
-                    },
-                ))
-            }
+            CrdsData::SnapshotHashes(sh) => Some(gossip_crds_data::Data::SnapshotHashes(
+                GossipSnapshotHashes {
+                    from: sh.from.to_bytes().to_vec(),
+                    full_slot: sh.full.0,
+                    full_hash: sh.full.1.to_bytes().to_vec(),
+                    incremental: sh
+                        .incremental
+                        .iter()
+                        .map(|(slot, hash)| GossipIncrementalHash {
+                            slot: *slot,
+                            hash: hash.to_bytes().to_vec(),
+                        })
+                        .collect(),
+                    wallclock: sh.wallclock,
+                },
+            )),
+            CrdsData::DuplicateShred(idx, ds) => Some(gossip_crds_data::Data::DuplicateShred(
+                GossipDuplicateShred {
+                    index: *idx as u32,
+                    from: ds.from().to_bytes().to_vec(),
+                    wallclock: ds.wallclock(),
+                    slot: ds.slot(),
+                    shred_index: 0,
+                    shred_type: 0,
+                    num_chunks: ds.num_chunks() as u32,
+                    chunk_index: ds.chunk_index() as u32,
+                    chunk: ds.chunk().to_vec(),
+                },
+            )),
             CrdsData::LegacyContactInfo(..)
             | CrdsData::LegacySnapshotHashes(..)
             | CrdsData::AccountsHashes(..)

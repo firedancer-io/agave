@@ -28,11 +28,7 @@ frozen-abi = [
     "solana-vote-program/frozen-abi",
 ]
 agave-unstable-api = []
-dev-context-only-utils = [
-    "dep:prost",
-    "dep:protosol",
-    "solana-bloom/dev-context-only-utils",
-]
+dev-context-only-utils = ["dep:prost", "dep:protosol", "solana-bloom/dev-context-only-utils"]
 
 [dependencies]
 agave-logger = { workspace = true }

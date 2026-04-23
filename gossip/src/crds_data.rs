@@ -413,7 +413,7 @@ impl Vote {
     }
 
     #[cfg(any(test, feature = "dev-context-only-utils"))]
-    pub(crate) fn vote_wallclock(&self) -> u64 {
+    pub(crate) fn wallclock(&self) -> u64 {
         self.wallclock
     }
 

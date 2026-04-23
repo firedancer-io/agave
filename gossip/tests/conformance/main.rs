@@ -6,7 +6,7 @@ mod fixtures;
 mod helpers;
 mod tests;
 
-use protosol::protos::{gossip_msg, GossipEffects};
+use protosol::protos::{GossipEffects, gossip_msg};
 
 pub(crate) const MAX_WALLCLOCK: u64 = 1_000_000_000_000_000;
 
@@ -17,7 +17,8 @@ pub(crate) fn get_effects(input: &[u8]) -> GossipEffects {
 pub(crate) fn check(input: &[u8], expect_valid: bool) {
     let effects = get_effects(input);
     assert_eq!(
-        effects.valid, expect_valid,
+        effects.valid,
+        expect_valid,
         "effects.valid mismatch: input len={}, expected {expect_valid}",
         input.len(),
     );

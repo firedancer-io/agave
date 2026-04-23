@@ -1,7 +1,7 @@
 use {
-    super::{check, get_effects, unwrap_msg, MAX_WALLCLOCK},
+    super::{MAX_WALLCLOCK, check, get_effects, unwrap_msg},
     crate::helpers::*,
-    protosol::protos::{gossip_crds_data, gossip_msg, GossipEffects},
+    protosol::protos::{GossipEffects, gossip_crds_data, gossip_msg},
 };
 
 // Ping tests
@@ -114,8 +114,8 @@ fn test_conformance_prune_valid() {
 #[test]
 fn test_conformance_prune_mismatched_pubkeys() {
     let data = make_prune_bytes(
-        &[0xAA; 32],  // outer pubkey
-        &[0xBB; 32],  // PruneData.pubkey (mismatch)
+        &[0xAA; 32], // outer pubkey
+        &[0xBB; 32], // PruneData.pubkey (mismatch)
         &[],
         &[0u8; 64],
         &[0u8; 32],
@@ -427,10 +427,16 @@ fn test_conformance_encode_invalid() {
     // Any invalid input should produce: GossipEffects { valid: false, msg: None }
     // protobuf encoding: field 1 (valid) = false is default, so omitted = empty
     let encoded = encode_effects(&[]);
-    assert!(encoded.is_empty(), "invalid input should encode to empty protobuf");
+    assert!(
+        encoded.is_empty(),
+        "invalid input should encode to empty protobuf"
+    );
 
     let encoded = encode_effects(&[0xFF; 3]);
-    assert!(encoded.is_empty(), "truncated input should encode to empty protobuf");
+    assert!(
+        encoded.is_empty(),
+        "truncated input should encode to empty protobuf"
+    );
 }
 
 #[test]

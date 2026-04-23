@@ -101,7 +101,7 @@ pub(crate) fn make_push_message_bytes(pubkey: &[u8; 32], values: &[Vec<u8>]) -> 
 
 /// Build a raw CrdsValue: signature(64) + crds_data_bytes.
 pub(crate) fn make_crds_value_bytes(signature: &[u8; 64], crds_data: &[u8]) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(64 + crds_data.len());
+    let mut buf = Vec::with_capacity(64usize.saturating_add(crds_data.len()));
     buf.extend_from_slice(signature);
     buf.extend_from_slice(crds_data);
     buf
@@ -194,15 +194,11 @@ pub(crate) fn make_vote_crds_data(index: u8, from: &[u8; 32], wallclock: u64) ->
     };
     let keypair = Keypair::new_from_array(*from);
     let vote = Vote::new(vec![1], solana_hash::Hash::default());
-    let vote_ix =
-        vote_instruction::vote(&keypair.pubkey(), &keypair.pubkey(), vote);
-    let mut vote_tx = solana_transaction::Transaction::new_with_payer(
-        &[vote_ix],
-        Some(&keypair.pubkey()),
-    );
+    let vote_ix = vote_instruction::vote(&keypair.pubkey(), &keypair.pubkey(), vote);
+    let mut vote_tx =
+        solana_transaction::Transaction::new_with_payer(&[vote_ix], Some(&keypair.pubkey()));
     vote_tx.partial_sign(&[&keypair], solana_hash::Hash::default());
-    let crds_vote =
-        CrdsVote::new(solana_pubkey::Pubkey::from(*from), vote_tx, wallclock)
-            .expect("valid vote tx");
+    let crds_vote = CrdsVote::new(solana_pubkey::Pubkey::from(*from), vote_tx, wallclock)
+        .expect("valid vote tx");
     bincode::serialize(&CrdsData::Vote(index, crds_vote)).unwrap()
 }
