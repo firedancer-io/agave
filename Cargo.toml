@@ -164,6 +164,7 @@ edition = "2021"
 
 [workspace.lints.rust]
 warnings = "deny"
+deprecated = "warn"
 
 [workspace.lints.rust.unexpected_cfgs]
 level = "warn"
@@ -285,6 +286,7 @@ hex = "0.4.3"
 hidapi = { version = "2.6.3", default-features = false }
 histogram = "0.6.9"
 hmac = "0.12.1"
+home = "=0.5.11"
 http = "0.2.12"
 humantime = "2.3.0"
 hyper = "0.14.32"
@@ -345,7 +347,7 @@ prost = "0.11.9"
 prost-build = "0.11.9"
 prost-types = "0.11.9"
 protobuf-src = "1.1.0"
-protosol = "2.0.0"
+protosol = "=6.1.0"
 qstring = "0.7.2"
 qualifier_attr = { version = "0.2.2", default-features = false }
 quinn = { package = "anza-quinn", version = "0.11.9-rustsec20260037" }
@@ -510,7 +512,7 @@ solana-rpc-client-types = { path = "rpc-client-types", version = "=3.1.14" }
 solana-runtime = { path = "runtime", version = "=3.1.14", features = ["agave-unstable-api"] }
 solana-runtime-transaction = { path = "runtime-transaction", version = "=3.1.14", features = ["agave-unstable-api"] }
 solana-sanitize = "3.0.1"
-solana-sbpf = { version = "=0.13.1", default-features = false }
+solana-sbpf = { git = "https://github.com/firedancer-io/sbpf", branch = "sbpf-v0.13.1-patches", version = "=0.13.1", default-features = false }
 solana-sdk-ids = "3.0.0"
 solana-secp256k1-program = "3.0.0"
 solana-secp256k1-recover = "3.0.0"

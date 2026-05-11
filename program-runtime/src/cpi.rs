@@ -26,32 +26,29 @@ use {
 };
 
 /// CPI-specific error types
-#[derive(Debug, Error, PartialEq, Eq)]
+#[derive(Debug, Error, PartialEq, Eq, Clone)]
 pub enum CpiError {
     #[error("Invalid pointer")]
     InvalidPointer,
     #[error("Too many signers")]
     TooManySigners,
-    #[error("Could not create program address with signer seeds: {0}")]
+    #[error("Could not create program address with signer seeds")]
     BadSeeds(PubkeyError),
     #[error("InvalidLength")]
     InvalidLength,
-    #[error("Invoked an instruction with too many accounts ({num_accounts} > {max_accounts})")]
+    #[error("Invoked an instruction with too many accounts")]
     MaxInstructionAccountsExceeded {
         num_accounts: u64,
         max_accounts: u64,
     },
-    #[error("Invoked an instruction with data that is too large ({data_len} > {max_data_len})")]
+    #[error("Invoked an instruction with data that is too large")]
     MaxInstructionDataLenExceeded { data_len: u64, max_data_len: u64 },
-    #[error(
-        "Invoked an instruction with too many account info's ({num_account_infos} > \
-         {max_account_infos})"
-    )]
+    #[error("Invoked an instruction with too many account info's")]
     MaxInstructionAccountInfosExceeded {
         num_account_infos: u64,
         max_account_infos: u64,
     },
-    #[error("Program {0} not supported by inner instructions")]
+    #[error("Program not supported by inner instructions")]
     ProgramNotSupported(Pubkey),
 }
 
@@ -1070,7 +1067,7 @@ where
                             "Internal error: index mismatch for account {}",
                             account_key
                         );
-                        Box::new(InstructionError::MissingAccount)
+                        Box::new(InstructionError::MissingAccount) as Error
                     })?;
 
             // build the CallerAccount corresponding to this account.
@@ -1183,7 +1180,7 @@ fn update_callee_account(
                 )?;
                 serialized_data
                     .get_mut(post_len..)
-                    .ok_or_else(|| Box::new(InstructionError::AccountDataTooSmall))?
+                    .ok_or_else(|| Box::new(InstructionError::AccountDataTooSmall) as Error)?
                     .fill(0);
             }
             callee_account.set_data_length(post_len)?;
@@ -1235,7 +1232,7 @@ fn update_caller_account_region(
         // enforce that in CallerAccount::from_(sol_)account_info.
         let (region_index, region) = memory_mapping
             .find_region(caller_account.vm_data_addr)
-            .ok_or_else(|| Box::new(InstructionError::MissingAccount))?;
+            .ok_or_else(|| Box::new(InstructionError::MissingAccount) as Error)?;
         // vm_data_addr must always point to the beginning of the region
         debug_assert_eq!(region.vm_addr, caller_account.vm_data_addr);
         let mut new_region;
@@ -1309,7 +1306,7 @@ fn update_caller_account(
                 caller_account
                     .serialized_data
                     .get_mut(post_len..)
-                    .ok_or_else(|| Box::new(InstructionError::AccountDataTooSmall))?
+                    .ok_or_else(|| Box::new(InstructionError::AccountDataTooSmall) as Error)?
                     .fill(0);
             }
             // Set the length of caller_account.serialized_data to post_len.

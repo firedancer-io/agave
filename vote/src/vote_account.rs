@@ -43,7 +43,7 @@ pub type VoteAccountsHashMap = HashMap<Pubkey, (/*stake:*/ u64, VoteAccount)>;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VoteAccounts {
     #[serde(deserialize_with = "deserialize_accounts_hash_map")]
-    vote_accounts: Arc<VoteAccountsHashMap>,
+    pub vote_accounts: Arc<VoteAccountsHashMap>,
     // Inner Arc is meant to implement copy-on-write semantics.
     #[serde(skip)]
     staked_nodes: OnceLock<
