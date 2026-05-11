@@ -18,8 +18,8 @@ use {
     std::{
         mem::ManuallyDrop,
         sync::{
-            Arc,
-            atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+            Arc, Condvar, Mutex,
+            atomic::{AtomicU64, AtomicUsize, Ordering},
         },
         thread,
         time::{Duration, Instant},
@@ -80,6 +80,15 @@ struct AtomicReadOnlyCacheStats {
     evictor_wakeup_count_productive: AtomicU64,
 }
 
+/// Shared state between the cache and its evictor thread, used to signal
+/// the evictor to wake up early (e.g. on drop) instead of waiting for
+/// the full polling interval to elapse.
+#[derive(Debug)]
+struct EvictorControl {
+    exit: Mutex<bool>,
+    wake: Condvar,
+}
+
 #[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
 #[derive(Debug)]
 pub(crate) struct ReadOnlyAccountsCache {
@@ -100,8 +109,9 @@ pub(crate) struct ReadOnlyAccountsCache {
     ///
     /// Evict from the cache in the background.
     evictor_thread_handle: ManuallyDrop<thread::JoinHandle<()>>,
-    /// Flag to stop the evictor
-    evictor_exit_flag: Arc<AtomicBool>,
+    /// Condvar-based control to stop the evictor without waiting for
+    /// the full sleep interval to elapse.
+    evictor_control: Arc<EvictorControl>,
 }
 
 impl ReadOnlyAccountsCache {
@@ -110,20 +120,29 @@ impl ReadOnlyAccountsCache {
         max_data_size_lo: usize,
         max_data_size_hi: usize,
         evict_sample_size: usize,
+        num_shards: Option<usize>,
     ) -> Self {
         assert!(max_data_size_lo <= max_data_size_hi);
         assert!(evict_sample_size > 0);
+        let num_shards = num_shards.unwrap_or(NUM_SHARDS);
+        assert!(
+            num_shards.is_power_of_two(),
+            "num_shards must be a power of two, got {num_shards}"
+        );
         let cache = Arc::new(DashMap::with_hasher_and_shard_amount(
             AHashRandomState::default(),
-            NUM_SHARDS,
+            num_shards,
         ));
         let data_size = Arc::new(AtomicUsize::default());
         let cache_len = Arc::new(AtomicUsize::default());
         let stats = Arc::new(AtomicReadOnlyCacheStats::default());
         let timer = Instant::now();
-        let evictor_exit_flag = Arc::new(AtomicBool::new(false));
+        let evictor_control = Arc::new(EvictorControl {
+            exit: Mutex::new(false),
+            wake: Condvar::new(),
+        });
         let evictor_thread_handle = Self::spawn_evictor(
-            evictor_exit_flag.clone(),
+            evictor_control.clone(),
             max_data_size_lo,
             max_data_size_hi,
             data_size.clone(),
@@ -143,7 +162,7 @@ impl ReadOnlyAccountsCache {
             stats,
             timer,
             evictor_thread_handle: ManuallyDrop::new(evictor_thread_handle),
-            evictor_exit_flag,
+            evictor_control,
         }
     }
 
@@ -286,7 +305,7 @@ impl ReadOnlyAccountsCache {
 
     /// Spawns the background thread to handle evictions
     fn spawn_evictor(
-        exit: Arc<AtomicBool>,
+        control: Arc<EvictorControl>,
         max_data_size_lo: usize,
         max_data_size_hi: usize,
         data_size: Arc<AtomicUsize>,
@@ -301,13 +320,18 @@ impl ReadOnlyAccountsCache {
                 info!("AccountsReadCacheEvictor has started");
                 let mut rng = SmallRng::from_os_rng();
                 loop {
-                    if exit.load(Ordering::Relaxed) {
+                    // Wait up to 100 ms, or until signaled to exit.
+                    // 100 ms is already four times per slot, which should be plenty.
+                    let guard = control.exit.lock().unwrap();
+                    let (guard, _timeout) = control
+                        .wake
+                        .wait_timeout(guard, Duration::from_millis(100))
+                        .unwrap();
+                    if *guard {
                         break;
                     }
+                    drop(guard);
 
-                    // We shouldn't need to evict often, so sleep to reduce the frequency.
-                    // 100 ms is already four times per slot, which should be plenty.
-                    thread::sleep(Duration::from_millis(100));
                     stats
                         .evictor_wakeup_count_all
                         .fetch_add(1, Ordering::Relaxed);
@@ -444,7 +468,11 @@ impl ReadOnlyAccountsCache {
 
 impl Drop for ReadOnlyAccountsCache {
     fn drop(&mut self) {
-        self.evictor_exit_flag.store(true, Ordering::Relaxed);
+        {
+            let mut exit = self.evictor_control.exit.lock().unwrap();
+            *exit = true;
+        }
+        self.evictor_control.wake.notify_one();
         // SAFETY: We are dropping, so we will never use `evictor_thread_handle` again.
         let evictor_thread_handle = unsafe { ManuallyDrop::take(&mut self.evictor_thread_handle) };
         evictor_thread_handle
@@ -516,6 +544,7 @@ mod tests {
             MAX_CACHE_SIZE,
             usize::MAX, // <-- do not evict in the background
             evict_sample_size,
+            None,
         );
         let slots: Vec<Slot> = repeat_with(|| rng.random_range(0..1000)).take(5).collect();
         let pubkeys: Vec<Pubkey> = repeat_with(|| {
@@ -577,7 +606,8 @@ mod tests {
         const ACCOUNT_DATA_SIZE: usize = 200;
         const MAX_ENTRIES: usize = 7;
         const MAX_CACHE_SIZE: usize = MAX_ENTRIES * (CACHE_ENTRY_SIZE + ACCOUNT_DATA_SIZE);
-        let cache = ReadOnlyAccountsCache::new(MAX_CACHE_SIZE, MAX_CACHE_SIZE, evict_sample_size);
+        let cache =
+            ReadOnlyAccountsCache::new(MAX_CACHE_SIZE, MAX_CACHE_SIZE, evict_sample_size, None);
 
         for i in 0..MAX_ENTRIES {
             let pubkey = Pubkey::new_unique();
@@ -618,6 +648,7 @@ mod tests {
             usize::MAX,
             usize::MAX,
             1, /* evictions never trigger */
+            None,
         );
 
         let pubkeys: Vec<_> = (0..NUM_ACCOUNTS).map(|_| Pubkey::new_unique()).collect();

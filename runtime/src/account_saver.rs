@@ -1,5 +1,6 @@
 use {
     core::borrow::Borrow,
+    qualifier_attr::qualifiers,
     solana_account::AccountSharedData,
     solana_pubkey::Pubkey,
     solana_svm::{
@@ -129,7 +130,8 @@ fn collect_accounts_for_successful_tx<'a, T: SVMMessage>(
     }
 }
 
-fn collect_accounts_for_failed_tx<'a>(
+#[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
+pub(crate) fn collect_accounts_for_failed_tx<'a>(
     collected_accounts: &mut Vec<(&'a Pubkey, &'a AccountSharedData)>,
     collected_account_transactions: &mut Option<Vec<&'a SanitizedTransaction>>,
     transaction_ref: Option<&'a SanitizedTransaction>,

@@ -1083,6 +1083,7 @@ impl AccountsDb {
         let read_cache_evict_sample_size = accounts_db_config
             .read_cache_evict_sample_size
             .unwrap_or(Self::DEFAULT_READ_ONLY_CACHE_EVICT_SAMPLE_SIZE);
+        let read_cache_num_shards = accounts_db_config.read_cache_num_shards;
 
         // Increase the stack for foreground threads
         // rayon needs a lot of stack
@@ -1131,6 +1132,7 @@ impl AccountsDb {
                 read_cache_size.0,
                 read_cache_size.1,
                 read_cache_evict_sample_size,
+                read_cache_num_shards,
             ),
             write_cache_limit_bytes: accounts_db_config.write_cache_limit_bytes,
             partitioned_epoch_rewards_config: accounts_db_config.partitioned_epoch_rewards_config,

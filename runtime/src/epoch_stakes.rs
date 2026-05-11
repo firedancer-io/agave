@@ -1,5 +1,6 @@
 use {
     crate::stakes::{DeserializableStakes, SerdeStakesToStakeFormat, Stakes},
+    qualifier_attr::qualifiers,
     serde::{Deserialize, Serialize},
     solana_bls_signatures::{Pubkey as BLSPubkey, PubkeyCompressed as BLSPubkeyCompressed},
     solana_clock::Epoch,
@@ -112,7 +113,7 @@ pub struct NodeVoteAccounts {
 /// Its bincode serializaiton format is identical as `VersionedEpochStakes`, but allows faster
 /// deserialization by storing stakes in [`DeserializableStakes`]).
 #[derive(Clone, Debug, Deserialize)]
-pub(crate) enum DeserializableVersionedEpochStakes {
+pub enum DeserializableVersionedEpochStakes {
     Current {
         stakes: DeserializableStakes<Stake>,
         total_stake: u64,
@@ -155,6 +156,7 @@ impl From<DeserializableVersionedEpochStakes> for VersionedEpochStakes {
 }
 
 impl VersionedEpochStakes {
+    #[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
     pub(crate) fn new(stakes: SerdeStakesToStakeFormat, leader_schedule_epoch: Epoch) -> Self {
         let epoch_vote_accounts = stakes.vote_accounts();
         let (total_stake, node_id_to_vote_accounts, epoch_authorized_voters) =

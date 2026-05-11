@@ -5,6 +5,7 @@ use solana_stake_interface::state::Stake;
 use {
     crate::{stake_account, stake_history::StakeHistory},
     im::HashMap as ImHashMap,
+    qualifier_attr::qualifiers,
     log::error,
     num_derive::ToPrimitive,
     rayon::{ThreadPool, prelude::*},
@@ -28,9 +29,8 @@ use {
 };
 
 mod serde_stakes;
-pub(crate) use serde_stakes::{
-    DeserializableStakes, SerdeStakesToStakeFormat, serialize_stake_accounts_to_delegation_format,
-};
+pub use serde_stakes::{DeserializableStakes, SerdeStakesToStakeFormat};
+pub(crate) use serde_stakes::serialize_stake_accounts_to_delegation_format;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -165,19 +165,19 @@ impl StakesCache {
 #[derive(Default, Clone, PartialEq, Debug, Serialize)]
 pub struct Stakes<T: Clone> {
     /// vote accounts
-    vote_accounts: VoteAccounts,
+    pub vote_accounts: VoteAccounts,
 
     /// stake_delegations
-    stake_delegations: ImHashMap<Pubkey, T>,
+    pub stake_delegations: ImHashMap<Pubkey, T>,
 
     /// unused
-    unused: u64,
+    pub unused: u64,
 
     /// current epoch, used to calculate current stake
-    epoch: Epoch,
+    pub epoch: Epoch,
 
     /// history of staking levels
-    stake_history: StakeHistory,
+    pub stake_history: StakeHistory,
 }
 
 impl<T: Clone> Stakes<T> {
@@ -225,6 +225,7 @@ impl Stakes<StakeAccount> {
     /// full account state for respective stake pubkeys. get_account function
     /// should return the account at the respective slot where stakes where
     /// cached.
+    #[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
     pub(crate) fn load_from_deserialized_delegations<F>(
         stakes: DeserializableStakes<Delegation>,
         get_account: F,

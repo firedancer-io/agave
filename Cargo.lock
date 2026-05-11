@@ -3532,6 +3532,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "home"
+version = "0.5.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "589533453244b0995c858700322199b2becb13b627df2851f64a2775d024abcf"
+dependencies = [
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "http"
 version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5567,6 +5576,7 @@ dependencies = [
 name = "proto"
 version = "4.0.0-beta.6"
 dependencies = [
+ "home",
  "protobuf-src",
  "tonic-build",
 ]
@@ -5602,12 +5612,11 @@ dependencies = [
 
 [[package]]
 name = "protosol"
-version = "2.0.0"
+version = "6.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5e70d64aff3756d57a2b5e84ee2a01923f2a5350a51b93e8ec4631b817d8dcd"
+checksum = "acef24e715f0ce9ac6491004da1c35c919c60517f976f61e0f05f34d22e873ec"
 dependencies = [
  "prost",
- "prost-build",
 ]
 
 [[package]]
@@ -8706,6 +8715,8 @@ dependencies = [
  "lru",
  "num-traits",
  "num_cpus",
+ "prost",
+ "protosol",
  "rand 0.9.2",
  "rand_chacha 0.9.0",
  "rayon",
@@ -10392,8 +10403,7 @@ checksum = "dcf09694a0fc14e5ffb18f9b7b7c0f15ecb6eac5b5610bf76a1853459d19daf9"
 [[package]]
 name = "solana-sbpf"
 version = "0.14.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "733b3657a0fab205102b799dbe17f85d3972cf984232c1b0b108fa6ba438e382"
+source = "git+https://github.com/firedancer-io/sbpf?branch=sbpf-v0.14.4-patches#7f8004458ee3c873f80e527ced73ecf71e53fd1f"
 dependencies = [
  "byteorder",
  "combine 3.8.1",
@@ -10765,6 +10775,7 @@ dependencies = [
  "bincode",
  "bs58",
  "enum-iterator",
+ "home",
  "prost",
  "protobuf-src",
  "serde",

@@ -36,7 +36,7 @@ mod tlv;
 #[macro_use]
 mod legacy_contact_info;
 pub mod ping_pong;
-mod protocol;
+pub mod protocol;
 mod push_active_set;
 mod received_cache;
 pub mod restart_crds_values;
@@ -55,5 +55,8 @@ extern crate solana_frozen_abi_macro;
 
 #[macro_use]
 extern crate solana_metrics;
+
+#[cfg(feature = "dev-context-only-utils")]
+pub use protocol::gossip_decode_to_effects;
 
 mod wire_format_tests;

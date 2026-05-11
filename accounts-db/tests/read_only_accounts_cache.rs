@@ -28,6 +28,7 @@ fn test_read_only_accounts_cache_eviction(num_accounts: (usize, usize), evict_sa
         max_cache_size,
         usize::MAX, // <-- do not evict in the background
         evict_sample_size,
+        None,
     );
     let data = vec![0u8; DATA_SIZE];
     let mut newer_half = HashSet::new();
