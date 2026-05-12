@@ -18,6 +18,10 @@ fn get_sysvar<T: std::fmt::Debug + SysvarSerialize + Clone>(
             .saturating_add(size_of::<T>() as u64),
     )?;
 
+    if !check_aligned {
+        return Err(SyscallError::UnalignedPointer.into());
+    }
+
     if var_addr >= ebpf::MM_INPUT_START
         && invoke_context
             .get_feature_set()

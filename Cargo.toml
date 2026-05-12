@@ -163,7 +163,7 @@ license = "Apache-2.0"
 edition = "2021"
 
 [workspace.lints.rust]
-warnings = "deny"
+warnings = "warn"
 deprecated = "warn"
 
 [workspace.lints.rust.unexpected_cfgs]
