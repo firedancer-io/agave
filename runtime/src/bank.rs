@@ -279,6 +279,14 @@ pub extern "C" fn fd_ext_bank_release_thunks( load_and_execute_output: *mut std:
     drop(load_and_execute_output);
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn fd_ext_bank_set_block_id( bank: *const std::ffi::c_void, block_id: *const u8 ) {
+    let bank = bank as *const Bank;
+    let bytes: [u8; 32] = unsafe { *(block_id as *const [u8; 32]) };
+    let hash = Hash::new_from_array(bytes);
+    unsafe { (*bank).set_block_id(Some(hash)); }
+}
+
 mod accounts_lt_hash;
 mod address_lookup_table;
 pub mod bank_hash_details;
