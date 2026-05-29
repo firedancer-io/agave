@@ -63,44 +63,47 @@ mod sysvar;
 /// Error definitions
 #[derive(Debug, ThisError, PartialEq, Eq)]
 pub enum SyscallError {
-    #[error("invalid utf-8 sequence")]
+    #[error("{0}: {1:?}")]
     InvalidString(Utf8Error, Vec<u8>),
     #[error("SBF program panicked")]
     Abort,
-    #[error("SBF program Panicked in...")]
+    #[error("SBF program Panicked in {0} at {1}:{2}")]
     Panic(String, u64, u64),
     #[error("Cannot borrow invoke context")]
     InvokeContextBorrowFailed,
-    #[error("Malformed signer seed")]
+    #[error("Malformed signer seed: {0}: {1:?}")]
     MalformedSignerSeed(Utf8Error, Vec<u8>),
-    #[error("Could not create program address with signer seeds")]
+    #[error("Could not create program address with signer seeds: {0}")]
     BadSeeds(PubkeyError),
-    #[error("Program not supported by inner instructions")]
+    #[error("Program {0} not supported by inner instructions")]
     ProgramNotSupported(Pubkey),
     #[error("Unaligned pointer")]
     UnalignedPointer,
     #[error("Too many signers")]
     TooManySigners,
-    #[error("Instruction passed to inner instruction is too large")]
+    #[error("Instruction passed to inner instruction is too large ({0} > {1})")]
     InstructionTooLarge(usize, usize),
     #[error("Too many accounts passed to inner instruction")]
     TooManyAccounts,
     #[error("Overlapping copy")]
     CopyOverlapping,
-    #[error("Return data too large")]
+    #[error("Return data too large ({0} > {1})")]
     ReturnDataTooLarge(u64, u64),
     #[error("Hashing too many sequences")]
     TooManySlices,
     #[error("InvalidLength")]
     InvalidLength,
-    #[error("Invoked an instruction with data that is too large")]
+    #[error("Invoked an instruction with data that is too large ({data_len} > {max_data_len})")]
     MaxInstructionDataLenExceeded { data_len: u64, max_data_len: u64 },
-    #[error("Invoked an instruction with too many accounts")]
+    #[error("Invoked an instruction with too many accounts ({num_accounts} > {max_accounts})")]
     MaxInstructionAccountsExceeded {
         num_accounts: u64,
         max_accounts: u64,
     },
-    #[error("Invoked an instruction with too many account info's")]
+    #[error(
+        "Invoked an instruction with too many account info's ({num_account_infos} > \
+         {max_account_infos})"
+    )]
     MaxInstructionAccountInfosExceeded {
         num_account_infos: u64,
         max_account_infos: u64,
