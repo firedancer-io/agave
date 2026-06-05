@@ -27,7 +27,7 @@ use {
     solana_measure::measure::Measure,
     solana_metrics::inc_new_counter_error,
     solana_rayon_threadlimit::get_thread_count,
-    solana_runtime::{bank::Bank, bank_forks::{BankForks, SharableBanks}},
+    solana_runtime::{bank_forks::{BankForks, SharableBanks}},
     solana_streamer::evicting_sender::EvictingSender,
     std::{
         borrow::Cow,
@@ -113,20 +113,11 @@ pub fn check_duplicate_shred(
     cluster_info: &ClusterInfo,
     blockstore: &Blockstore,
     duplicate_slots_sender: &Sender<Slot>,
-    root_bank: &Bank,
     shred: PossibleDuplicateShred,
+    validate_chained_block_id: bool,
+    validate_chained_block_id_2: bool,
 ) -> Result<()> {
     let shred_slot = shred.slot();
-    let validate_chained_block_id = shred::filter::check_feature_activation_from_bank(
-        &feature_set::validate_chained_block_id::id(),
-        shred_slot,
-        root_bank,
-    );
-    let validate_chained_block_id_2 = shred::filter::check_feature_activation_from_bank(
-        &feature_set::validate_chained_block_id_2::id(),
-        shred_slot,
-        root_bank,
-    );
     let (shred1, shred2) = match shred {
         PossibleDuplicateShred::LastIndexConflict(shred, conflict)
         | PossibleDuplicateShred::ErasureConflict(shred, conflict)
@@ -187,12 +178,24 @@ fn run_check_duplicate(
             last_updated = Instant::now();
             root_bank = bank_forks.read().unwrap().root_bank();
         }
+        let shred_slot = shred.slot();
+        let validate_chained_block_id = shred::filter::check_feature_activation_from_bank(
+            &feature_set::validate_chained_block_id::id(),
+            shred_slot,
+            &root_bank,
+        );
+        let validate_chained_block_id_2 = shred::filter::check_feature_activation_from_bank(
+            &feature_set::validate_chained_block_id_2::id(),
+            shred_slot,
+            &root_bank,
+        );
         check_duplicate_shred(
             cluster_info,
             blockstore,
             duplicate_slots_sender,
-            &root_bank,
             shred,
+            validate_chained_block_id,
+            validate_chained_block_id_2,
         )
     };
     const RECV_TIMEOUT: Duration = Duration::from_millis(200);
