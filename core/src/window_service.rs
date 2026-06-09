@@ -109,14 +109,15 @@ impl WindowServiceMetrics {
 
 /// Per-shred duplicate handling, extracted from `run_check_duplicate` so the
 /// shred-parse differential harness can run the same code path.
+///
+/// Returns the duplicate proof (`shred` and the conflicting payload) when one is
+/// detected, leaving propagation to the caller.
 pub fn check_duplicate_shred(
-    cluster_info: &ClusterInfo,
     blockstore: &Blockstore,
-    duplicate_slots_sender: &Sender<Slot>,
     shred: PossibleDuplicateShred,
     validate_chained_block_id: bool,
     validate_chained_block_id_2: bool,
-) -> Result<()> {
+) -> Result<Option<(Shred, shred::Payload)>> {
     let shred_slot = shred.slot();
     let (shred1, shred2) = match shred {
         PossibleDuplicateShred::LastIndexConflict(shred, conflict)
@@ -128,23 +129,23 @@ pub fn check_duplicate_shred(
                 // We still need to mark the block as dead for other client teams.
                 blockstore.set_dead_slot(shred_slot)?;
             }
-            return Ok(());
+            return Ok(None);
         }
         PossibleDuplicateShred::FixedFECChainedMerkleRootConflict(_slot) => {
             if validate_chained_block_id_2 {
                 blockstore.set_dead_slot(shred_slot)?;
             }
-            return Ok(());
+            return Ok(None);
         }
         PossibleDuplicateShred::Exists(shred) => {
             // Unlike the other cases we have to wait until here to decide to handle the duplicate and store
             // in blockstore. This is because the duplicate could have been part of the same insert batch,
             // so we wait until the batch has been written.
             if blockstore.has_duplicate_shreds_in_slot(shred_slot) {
-                return Ok(()); // A duplicate is already recorded
+                return Ok(None); // A duplicate is already recorded
             }
             let Some(existing_shred_payload) = blockstore.is_shred_duplicate(&shred) else {
-                return Ok(()); // Not a duplicate
+                return Ok(None); // Not a duplicate
             };
             blockstore.store_duplicate_slot(
                 shred_slot,
@@ -155,12 +156,7 @@ pub fn check_duplicate_shred(
         }
     };
 
-    // Propagate duplicate proof through gossip
-    cluster_info.push_duplicate_shred(&shred1, &shred2)?;
-    // Notify duplicate consensus state machine
-    duplicate_slots_sender.send(shred_slot)?;
-
-    Ok(())
+    Ok(Some((shred1, shred2)))
 }
 
 fn run_check_duplicate(
@@ -189,14 +185,18 @@ fn run_check_duplicate(
             shred_slot,
             &root_bank,
         );
-        check_duplicate_shred(
-            cluster_info,
+        if let Some((shred1, shred2)) = check_duplicate_shred(
             blockstore,
-            duplicate_slots_sender,
             shred,
             validate_chained_block_id,
             validate_chained_block_id_2,
-        )
+        )? {
+            // Propagate duplicate proof through gossip
+            cluster_info.push_duplicate_shred(&shred1, &shred2)?;
+            // Notify duplicate consensus state machine
+            duplicate_slots_sender.send(shred_slot)?;
+        }
+        Ok(())
     };
     const RECV_TIMEOUT: Duration = Duration::from_millis(200);
     std::iter::once(shred_receiver.recv_timeout(RECV_TIMEOUT)?)
