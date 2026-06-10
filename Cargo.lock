@@ -5533,13 +5533,12 @@ dependencies = [
 
 [[package]]
 name = "protosol"
-version = "8.4.0"
+version = "9.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "841b2df401df285107ce73193e501a029f358298b078cc97694478e1da925d11"
+checksum = "e19fd23beba10243272008acfa690c6cda43efed0fd23e3fa9c9dc6e1a989848"
 dependencies = [
  "prost 0.11.9",
  "solana-account 4.3.0",
- "solana-epoch-schedule",
  "solana-inflation",
  "solana-message",
  "solana-pubkey 4.2.0",
