@@ -1064,6 +1064,7 @@ pub fn process_blockstore_from_root(
 }
 
 /// Verify that a segment of entries has the correct number of ticks and hashes
+#[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
 fn verify_ticks(
     bank: &Bank,
     entries: &[Entry],
