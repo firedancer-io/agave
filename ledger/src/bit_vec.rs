@@ -294,7 +294,8 @@ impl<const NUM_BITS: usize> BitVec<NUM_BITS> {
         let bound = bound.min(NUM_BITS);
         let last_word_idx = bound.checked_sub(1)? / BITS_PER_WORD;
         let bit_in_word = (bound - 1) % BITS_PER_WORD;
-        let last_word = self.words[last_word_idx] & (Word::MAX >> (BITS_PER_WORD - 1 - bit_in_word));
+        let last_word =
+            self.words[last_word_idx] & (Word::MAX >> (BITS_PER_WORD - 1 - bit_in_word));
         if last_word != 0 {
             let msb = BITS_PER_WORD - 1 - last_word.leading_zeros() as usize;
             return Some(last_word_idx * BITS_PER_WORD + msb);
@@ -341,7 +342,9 @@ impl<const NUM_BITS: usize> BitVec<NUM_BITS> {
         let first_word_idx = from / BITS_PER_WORD;
         let first_word = self.words[first_word_idx] & (Word::MAX << (from % BITS_PER_WORD));
         if first_word != 0 {
-            return in_bounds(first_word_idx * BITS_PER_WORD + first_word.trailing_zeros() as usize);
+            return in_bounds(
+                first_word_idx * BITS_PER_WORD + first_word.trailing_zeros() as usize,
+            );
         }
         // Bytes are index-ascending and bits LSB-first, so a from_le_bytes u64 preserves bit order.
         let mut chunks = self.words[first_word_idx + 1..].chunks_exact(8);
@@ -349,13 +352,18 @@ impl<const NUM_BITS: usize> BitVec<NUM_BITS> {
         for chunk in &mut chunks {
             let chunk_word = u64::from_le_bytes(chunk.try_into().unwrap());
             if chunk_word != 0 {
-                return in_bounds(chunk_start_word_idx * BITS_PER_WORD + chunk_word.trailing_zeros() as usize);
+                return in_bounds(
+                    chunk_start_word_idx * BITS_PER_WORD + chunk_word.trailing_zeros() as usize,
+                );
             }
             chunk_start_word_idx += 8;
         }
         for (offset, &word) in chunks.remainder().iter().enumerate() {
             if word != 0 {
-                return in_bounds((chunk_start_word_idx + offset) * BITS_PER_WORD + word.trailing_zeros() as usize);
+                return in_bounds(
+                    (chunk_start_word_idx + offset) * BITS_PER_WORD
+                        + word.trailing_zeros() as usize,
+                );
             }
         }
         None
