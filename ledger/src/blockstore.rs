@@ -6182,9 +6182,7 @@ fn update_completed_data_indexes<'a>(
     .into_iter()
     .flatten()
     .tuple_windows()
-    .filter(|&(start, end)| {
-        received_data_shreds.contains_range(u64::from(start)..u64::from(end))
-    })
+    .filter(|&(start, end)| received_data_shreds.contains_range(u64::from(start)..u64::from(end)))
     .map(|(start, end)| start..end)
 }
 
