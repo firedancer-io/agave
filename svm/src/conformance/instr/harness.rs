@@ -7,7 +7,7 @@ use {
             callback::DefaultCallback,
             setup::{
                 InvokeContextFields, compute_budget, prepare_invoke_context_fields,
-                program_runtime_environments,
+                program_loader_key, program_runtime_environments,
             },
         },
         message_processor::process_message,
@@ -59,10 +59,7 @@ pub fn execute_instr_with_callback<C: InvokeContextCallback>(
     let mut compute_budget = compute_budget(&input.feature_set);
     compute_budget.compute_unit_limit = input.cu_avail; // Clamp budget for execution by cu_avail
 
-    let loader_key = program_cache
-        .find(&input.instruction.program_id)
-        .expect("program not loaded in cache")
-        .account_owner();
+    let loader_key = program_loader_key(&input.accounts, &input.instruction.program_id);
 
     let program_runtime_environments =
         program_runtime_environments(&input.feature_set, &compute_budget);
@@ -126,6 +123,28 @@ pub fn execute_instr_with_callback<C: InvokeContextCallback>(
         })
         .collect::<Vec<_>>();
 
+    // Post-execution state of the accounts in the compiled message.
+    let executed: std::collections::HashMap<Pubkey, solana_account::AccountSharedData> =
+        transaction_context
+            .deconstruct_without_keys()
+            .unwrap()
+            .into_iter()
+            .zip(account_keys)
+            .map(|(account, key)| (key, account))
+            .collect();
+
+    // Report every input account (in input order), overlaying the executed
+    // state for those referenced by the instruction. Accounts absent from the
+    // compiled message are unchanged, so their input state is reported as-is.
+    let resulting_accounts = input
+        .accounts
+        .iter()
+        .map(|(pubkey, input_account)| match executed.get(pubkey) {
+            Some(account) => (*pubkey, account.clone().into()),
+            None => (*pubkey, input_account.clone()),
+        })
+        .collect();
+
     InstrEffects {
         custom_err: if let Err(InstructionError::Custom(code)) = result {
             Some(code)
@@ -133,13 +152,7 @@ pub fn execute_instr_with_callback<C: InvokeContextCallback>(
             None
         },
         result: result.err(),
-        resulting_accounts: transaction_context
-            .deconstruct_without_keys()
-            .unwrap()
-            .into_iter()
-            .zip(account_keys)
-            .map(|(account, key)| (key, account.into()))
-            .collect(),
+        resulting_accounts,
         cu_avail,
         return_data,
         logs,
@@ -387,9 +400,16 @@ mod tests {
     #[test_case(solana_sdk_ids::bpf_loader_upgradeable::id(); "loader_v3")]
     fn test_bpf_noop_program_exec(loader_key: Pubkey) {
         let program_id = Pubkey::new_unique();
+        let program_account = Account {
+            lamports: 1,
+            data: vec![],
+            owner: loader_key,
+            executable: true,
+            rent_epoch: u64::MAX,
+        };
         let context = InstrContext::new_with_default_budget(
             SVMFeatureSet::default(),
-            vec![],
+            vec![(program_id, program_account)],
             Instruction::new_with_bytes(program_id, &[], vec![]),
         );
         let sysvar_cache = sysvar_cache_with_rent();
