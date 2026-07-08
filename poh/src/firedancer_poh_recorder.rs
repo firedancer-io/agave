@@ -27,8 +27,8 @@ unsafe extern "C" {
     fn fd_ext_poh_acquire_leader_bank() -> *const c_void;
     fn fd_ext_poh_reset_slot() -> u64;
     fn fd_ext_poh_reached_leader_slot(out_leader_slot: *mut u64, out_reset_slot: *mut u64) -> i32;
-    fn fd_ext_poh_begin_leader(bank: *const c_void, slot: u64, epoch: u64, hashcnt_per_tick: u64, cus_block_limit: u64, cus_vote_cost_limit: u64, cus_account_cost_limit: u64);
-    fn fd_ext_poh_reset(reset_bank_slot: u64, reset_blockhash: *const u8, hashcnt_per_tick: u64, block_id: *const u8, features_activation_slot: *const u64);
+    fn fd_ext_poh_begin_leader(bank: *const c_void, slot: u64, epoch: u64, hashcnt_per_tick: u64, cus_block_limit: u64, cus_vote_cost_limit: u64, cus_account_cost_limit: u64, cus_allocated_data_size_limit: u64, max_data_shreds: u64);
+    fn fd_ext_poh_reset(reset_bank_slot: u64, reset_blockhash: *const u8, hashcnt_per_tick: u64, block_id: *const u8, features_activation_slot: *const u64, shred_slot_limits: *const u64);
     fn fd_ext_poh_get_leader_after_n_slots(n: u64, out_pubkey: *mut u8) -> i32;
     fn fd_ext_poh_update_active_descendant(max_active_descendant: u64);
 }
@@ -206,6 +206,8 @@ impl PohRecorder {
         let cus_vote_cost_limit =  solana_cost_model::block_cost_limits::MAX_BLOCK_UNITS;
         let cus_block_limit = bank.read_cost_tracker().unwrap().get_block_limit();
         let cus_account_cost_limit = bank.read_cost_tracker().unwrap().get_account_limit();
+        let cus_allocated_data_size_limit = bank.read_cost_tracker().unwrap().get_allocated_data_size_limit();
+        let max_data_shreds: u64 = bank.max_data_shreds_per_slot() as u64;
 
         let leader_state = self.shared_leader_state.load();
         let leader_first_tick_height = leader_state.leader_first_tick_height();
@@ -220,7 +222,7 @@ impl PohRecorder {
         )));
 
         let leader_bank: *const Bank = Arc::into_raw( bank );
-        unsafe { fd_ext_poh_begin_leader( leader_bank as *const c_void, slot, epoch, hashes_per_tick, cus_block_limit, cus_vote_cost_limit, cus_account_cost_limit ) };
+        unsafe { fd_ext_poh_begin_leader( leader_bank as *const c_void, slot, epoch, hashes_per_tick, cus_block_limit, cus_vote_cost_limit, cus_account_cost_limit, cus_allocated_data_size_limit, max_data_shreds ) };
     }
 
     pub fn reset(&mut self, reset_bank: Arc<Bank>, next_leader_slot: Option<(Slot, Slot)>) {
@@ -254,7 +256,11 @@ impl PohRecorder {
            Due to the fact that their computation requires the bank,
            we are forced (so far) to implement it here, sending them
            to the poh tile as an intermediary (before forwarding them
-           to the shred tile). */
+           to the shred tile).
+
+           This also applies to the shred_slot_limits that change with
+           the reduce_slot_time feature gates, which are sent along the
+           same path to the shred tile. */
         let mut features_activation_slot: [u64; FD_POH_RECORDER_FEATURES_OF_INTEREST_CNT] = [u64::MAX; FD_POH_RECORDER_FEATURES_OF_INTEREST_CNT];
         for (i, pubkey) in FD_POH_RECORDER_FEATURES_OF_INTEREST.iter().enumerate() {
             features_activation_slot[i] = match reset_bank.feature_set.activated_slot(pubkey) {
@@ -267,8 +273,10 @@ impl PohRecorder {
             }
         }
 
+        let shred_slot_limits: [u64; 5] = reset_bank.shred_slot_limits( reset_bank_slot );
         unsafe { fd_ext_poh_reset( reset_bank_slot, reset_bank_blockhash.as_ref().as_ptr(),
-                  hashes_per_tick, block_id_ptr, features_activation_slot.as_ref().as_ptr() ) };
+                  hashes_per_tick, block_id_ptr, features_activation_slot.as_ref().as_ptr(),
+                  shred_slot_limits.as_ref().as_ptr() ) };
     }
 
     pub fn track_transaction_indexes(&mut self) {
