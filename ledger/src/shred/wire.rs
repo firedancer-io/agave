@@ -1,6 +1,8 @@
 // Helper methods to extract pieces of the shred from the payload without
 // deserializing the entire payload.
 #![deny(clippy::indexing_slicing)]
+#[cfg(feature = "dev-context-only-utils")]
+use qualifier_attr::qualifiers;
 use {
     crate::{
         blockstore_meta::ErasureConfig,
@@ -8,7 +10,13 @@ use {
             self, Error, Nonce, SIZE_OF_COMMON_SHRED_HEADER, ShredFlags, ShredId, ShredType,
             ShredVariant, merkle_tree::SIZE_OF_MERKLE_ROOT, traits::Shred,
         },
-    }, qualifier_attr::qualifiers, solana_clock::Slot, solana_hash::Hash, solana_keypair::Keypair, solana_perf::packet::{PacketRef, PacketRefMut}, solana_signature::{SIGNATURE_BYTES, Signature}, solana_signer::Signer,
+    },
+    solana_clock::Slot,
+    solana_hash::Hash,
+    solana_keypair::Keypair,
+    solana_perf::packet::{PacketRef, PacketRefMut},
+    solana_signature::{SIGNATURE_BYTES, Signature},
+    solana_signer::Signer,
 };
 #[cfg(test)]
 use {
