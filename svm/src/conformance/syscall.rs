@@ -25,7 +25,7 @@ use {
         solana_sbpf::{
             aligned_memory::AlignedMemory,
             ebpf::{HOST_ALIGN, MM_BYTECODE_START, MM_HEAP_START, MM_INPUT_START, MM_STACK_START},
-            error::{ProgramResult, StableResult},
+            error::{EbpfError, ProgramResult, StableResult},
             memory_region::{AccessViolationHandler, MemoryMapping, MemoryRegion},
             program::{BuiltinProgram, SBPFVersion},
             vm::{Config, ContextObject, EbpfVm},
@@ -42,7 +42,7 @@ const STACK_SIZE: usize = 64 * STACK_GAP_SIZE as usize;
 const HEAP_MAX: usize = 256 * 1024;
 const SBPF_VERSION: SBPFVersion = SBPFVersion::V0;
 
-pub fn execute_vm_syscall(input: ProtoSyscallContext) -> ProtoSyscallEffects {
+pub fn execute_vm_syscall(input: ProtoSyscallContext) -> Option<ProtoSyscallEffects> {
     let instr_context = InstrContext::from(input.instr_ctx.expect("missing instr context"));
     let mut vm_context = input.vm_ctx.expect("missing vm context");
     let syscall_invocation = input.syscall_invocation.unwrap_or_default();
@@ -153,8 +153,7 @@ pub fn execute_vm_syscall(input: ProtoSyscallContext) -> ProtoSyscallEffects {
 
     let syscall_function = execution_environment
         .get_function_registry()
-        .lookup_by_name(&syscall_invocation.function_name)
-        .expect("syscall function not registered")
+        .lookup_by_name(&syscall_invocation.function_name)?
         .1
         .0;
 
@@ -181,17 +180,21 @@ pub fn execute_vm_syscall(input: ProtoSyscallContext) -> ProtoSyscallEffects {
         virtual_address_space_adjustments,
     );
 
+    let cu_avail = invoke_context.get_remaining();
+    let mut program_result = program_result;
+    if let Err(pop_err) = invoke_context.pop() {
+        if matches!(program_result, StableResult::Ok(_)) {
+            program_result = StableResult::Err(EbpfError::SyscallError(Box::new(pop_err)));
+        }
+    }
+
     let UnpackedResult {
         error,
         error_kind,
         r0,
     } = unpack_stable_result(program_result);
-    let cu_avail = invoke_context.get_remaining();
-    invoke_context
-        .pop()
-        .expect("failed to pop instruction context");
 
-    ProtoSyscallEffects {
+    Some(ProtoSyscallEffects {
         error,
         error_kind,
         r0,
@@ -203,7 +206,7 @@ pub fn execute_vm_syscall(input: ProtoSyscallContext) -> ProtoSyscallEffects {
         rodata: rodata.as_slice().to_vec(),
         pc: 0,
         ..Default::default()
-    }
+    })
 }
 
 fn get_registers(vm_context: &ProtoVmContext) -> [u64; 12] {
@@ -345,7 +348,9 @@ pub unsafe extern "C" fn sol_compat_vm_syscall_execute_v1(
         return 0;
     };
 
-    let syscall_effects = execute_vm_syscall(syscall_context);
+    let Some(syscall_effects) = execute_vm_syscall(syscall_context) else {
+        return 0;
+    };
     let out_slice = unsafe { std::slice::from_raw_parts_mut(out_ptr, (*out_psz) as usize) };
     let out_vec = syscall_effects.encode_to_vec();
     if out_vec.len() > out_slice.len() {
@@ -428,7 +433,8 @@ mod tests {
             0,
             0,
             msg.to_vec(),
-        ));
+        ))
+        .expect("sol_log_ is a registered syscall");
 
         assert_eq!(effects.error, 0);
         // Logs are no longer collected (the harness runs without a log
@@ -445,7 +451,8 @@ mod tests {
             8,             // r3: count
             0,
             vec![0u8; 16],
-        ));
+        ))
+        .expect("sol_memset_ is a registered syscall");
 
         assert_eq!(effects.error, 0);
         assert_eq!(&effects.heap[..8], &[0x42; 8]);
@@ -465,7 +472,8 @@ mod tests {
             10,            // r3: line
             5,             // r4: column
             b"x".to_vec(),
-        ));
+        ))
+        .expect("sol_panic_ is a registered syscall");
 
         assert_ne!(effects.error, 0);
     }
