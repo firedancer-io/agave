@@ -544,7 +544,8 @@ impl ShredIndex {
     /// including empty and degenerate (end <= start) windows, where both are
     /// vacuously true (see `test_shred_index_contains_range`).
     pub(crate) fn contains_range(&self, bounds: Range<u64>) -> bool {
-        self.count_range(bounds.clone()) as u64 == bounds.end.saturating_sub(bounds.start)
+        let width = bounds.end.saturating_sub(bounds.start);
+        width <= self.num_shreds as u64 && self.count_range(bounds) as u64 == width
     }
 
     pub(crate) fn range<R>(&self, bounds: R) -> impl Iterator<Item = u64> + '_
@@ -979,6 +980,7 @@ mod test {
     };
 
     #[test]
+    #[allow(clippy::reversed_empty_ranges)]
     fn test_shred_index_contains_range() {
         let index: ShredIndex = [2u64, 3, 4, 7].into_iter().collect();
         // Exhaustively cross-check against the iterator definition over every
