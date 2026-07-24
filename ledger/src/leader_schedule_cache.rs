@@ -21,15 +21,13 @@ const MAX_SCHEDULES: usize = 10;
 
 // FIREDANCER: Some constants for the number and size of the leader
 // schedules we send across the IPC boundary.
-const FIREDANCER_STAKE_WEIGHT_CNT: usize = 108_000;
-const FIREDANCER_MAX_COMPRESSED_STAKE_WEIGHTS: usize = FIREDANCER_STAKE_WEIGHT_CNT * 2 + 1;
-const FIREDANCER_MAX_ID_WEIGHTS: usize = 40_200;
+const FIREDANCER_MAX_STAKE_WEIGHTS: usize = 2_000;
 const FIREDANCER_PACKET_HEADER_SZ: usize = 48;
 const FIREDANCER_VOTE_PACKET_RECORD_SZ: usize = 72;
 const FIREDANCER_ID_WEIGHT_RECORD_SZ: usize = 40;
 const FIREDANCER_PACKET_MAX_SZ: usize = FIREDANCER_PACKET_HEADER_SZ
-    + FIREDANCER_MAX_COMPRESSED_STAKE_WEIGHTS * FIREDANCER_VOTE_PACKET_RECORD_SZ
-    + FIREDANCER_MAX_ID_WEIGHTS * FIREDANCER_ID_WEIGHT_RECORD_SZ;
+    + FIREDANCER_MAX_STAKE_WEIGHTS
+        * (FIREDANCER_VOTE_PACKET_RECORD_SZ + FIREDANCER_ID_WEIGHT_RECORD_SZ);
 
 struct CacheCapacity(usize);
 impl Default for CacheCapacity {
@@ -262,143 +260,103 @@ impl LeaderScheduleCache {
             // blocks. This call will block until it can send the update.
             if rooted {
                 unsafe {
-                    Self::firedancer_send_leader_schedule(epoch, bank, leader_schedule.clone(), &self.firedancer_rwlock);
+                    Self::firedancer_send_leader_schedule(epoch, bank, &self.firedancer_rwlock);
                 }
             }
             leader_schedule
         })
     }
 
-    /// FIREDANCER: Send compressed stake weights over the IPC boundary
-    /// to Firedancer.  Adjacent non-leader entries are merged into
-    /// aggregate dummy records so the message is bounded by
-    /// FIREDANCER_MAX_COMPRESSED_STAKE_WEIGHTS instead of the full
-    /// vote account set.
+    /// FIREDANCER: Send stake weights over the IPC boundary to Firedancer.
     unsafe fn firedancer_send_leader_schedule(
-      epoch: Epoch,
-      bank: &Bank,
-      leader_schedule: Arc<LeaderSchedule>,
-      send_firedancer: &Option<RwLock<()>>,
-  ) {
+        epoch: Epoch,
+        bank: &Bank,
+        send_firedancer: &Option<RwLock<()>>,
+    ) {
+        if let Some(lock) = send_firedancer.as_ref() {
+            let _guard = lock.write().unwrap();
 
-      if let Some(lock) = send_firedancer.as_ref() {
-          let _guard = lock.write().unwrap();
+            let (first_slot, slot_cnt) = (
+                bank.epoch_schedule().get_first_slot_in_epoch(epoch),
+                bank.epoch_schedule().get_slots_in_epoch(epoch),
+            );
+            let mut stakes: Vec<(Pubkey, Pubkey, u64)> = bank
+                .epoch_vote_accounts(epoch)
+                .map(|x| {
+                    x.iter().filter(|&(_, (stake, _))| *stake > 0).map(
+                        |(vote_pubkey, (stake, vote_account))| {
+                            (*vote_pubkey, *vote_account.node_pubkey(), *stake)
+                        },
+                    )
+                })
+                .unwrap()
+                .collect::<Vec<_>>();
+            stakes.sort_unstable_by(|(l_pubkey, _, l_stake), (r_pubkey, _, r_stake)| {
+                if r_stake == l_stake {
+                    r_pubkey.cmp(l_pubkey)
+                } else {
+                    r_stake.cmp(l_stake)
+                }
+            });
 
-          let (first_slot, slot_cnt) = (
-              bank.epoch_schedule().get_first_slot_in_epoch(epoch),
-              bank.epoch_schedule().get_slots_in_epoch(epoch),
-          );
-          let mut stakes: Vec<(Pubkey, Pubkey, u64)> = bank
-              .epoch_vote_accounts(epoch)
-              .map(|x| {
-                  x.iter().filter(|&(_, (stake, _))| *stake > 0).map(
-                      |(vote_pubkey, (stake, vote_account))| {
-                          (*vote_pubkey, *vote_account.node_pubkey(), *stake)
-                      },
-                  )
-              })
-              .unwrap()
-              .collect::<Vec<_>>();
-          stakes.sort_unstable_by(|(l_pubkey, _, l_stake), (r_pubkey, _, r_stake)| {
-              if r_stake == l_stake {
-                  r_pubkey.cmp(l_pubkey)
-              } else {
-                  r_stake.cmp(l_stake)
-              }
-          });
+            assert!(stakes.len() <= FIREDANCER_MAX_STAKE_WEIGHTS);
 
+            let mut memory: Box<[u8; FIREDANCER_PACKET_MAX_SZ]> =
+                vec![0u8; FIREDANCER_PACKET_MAX_SZ].try_into().unwrap();
 
-          let leader_vote_keys: std::collections::HashSet<Pubkey> = leader_schedule
-              .get_slot_leaders()
-              .iter()
-              .map(|sl| sl.vote_address)
-              .collect();
+            for (i, &(vote_pubkey, node_pubkey, stake)) in stakes.iter().enumerate() {
+                let offset = FIREDANCER_PACKET_HEADER_SZ + i * FIREDANCER_VOTE_PACKET_RECORD_SZ;
+                memory[offset..offset + 32].copy_from_slice(&vote_pubkey.to_bytes());
+                memory[offset + 32..offset + 64].copy_from_slice(&node_pubkey.to_bytes());
+                memory[offset + 64..offset + 72].copy_from_slice(&stake.to_le_bytes());
+            }
 
-          // FD_DUMMY_ACCOUNT sentinel: [0x00 * 31, 0xFF]
-          let dummy_pubkey = {
-              let mut bytes = [0u8; 32];
-              bytes[31] = 0xFF;
-              Pubkey::from(bytes)
-          };
+            // Compute id weights for Turbine tree: aggregate stake
+            // by node identity (handles 1:N vote-to-id mapping) and
+            // sort by (stake desc, id desc).
+            let mut id_stake_map: HashMap<Pubkey, u64> = HashMap::new();
+            for &(_, node_pubkey, stake) in stakes.iter() {
+                *id_stake_map.entry(node_pubkey).or_insert(0) += stake;
+            }
+            let mut id_weights: Vec<(Pubkey, u64)> = id_stake_map.into_iter().collect();
+            id_weights.sort_unstable_by(|(l_id, l_stake), (r_id, r_stake)| {
+                if r_stake == l_stake {
+                    r_id.cmp(l_id)
+                } else {
+                    r_stake.cmp(l_stake)
+                }
+            });
+            assert!(id_weights.len() <= FIREDANCER_MAX_STAKE_WEIGHTS);
 
-          let mut memory: Box<[u8; FIREDANCER_PACKET_MAX_SZ]> = vec![0u8; FIREDANCER_PACKET_MAX_SZ].try_into().unwrap();
+            // Serialize id weight records (32B id + 8B stake) after
+            // the vote weights.
+            let id_weights_base =
+                FIREDANCER_PACKET_HEADER_SZ + stakes.len() * FIREDANCER_VOTE_PACKET_RECORD_SZ;
+            for (j, (id, stake)) in id_weights.iter().enumerate() {
+                let offset = id_weights_base + j * FIREDANCER_ID_WEIGHT_RECORD_SZ;
+                memory[offset..offset + 32].copy_from_slice(&id.to_bytes());
+                memory[offset + 32..offset + 40].copy_from_slice(&stake.to_le_bytes());
+            }
 
-          // Compress stake weights: keep leaders as-is, merge
-          // consecutive non-leaders into single dummy entries.
-          let mut idx = 0usize;
+            // Header: matches fd_stake_weight_msg_t layout (6 fields, 48 bytes)
+            memory[0..8].copy_from_slice(&epoch.to_le_bytes());
+            memory[8..16].copy_from_slice(&(stakes.len() as u64).to_le_bytes()); // staked_vote_cnt
+            memory[16..24].copy_from_slice(&(id_weights.len() as u64).to_le_bytes()); // staked_id_cnt
+            memory[24..32].copy_from_slice(&first_slot.to_le_bytes());
+            memory[32..40].copy_from_slice(&slot_cnt.to_le_bytes());
+            let ns_per_slot = u64::try_from(bank.ns_per_slot).expect("ns_per_slot must fit in u64");
+            memory[40..48].copy_from_slice(&ns_per_slot.to_le_bytes());
 
-          let needs_compression = stakes.len() > FIREDANCER_MAX_COMPRESSED_STAKE_WEIGHTS;
+            let msg_len = id_weights_base + id_weights.len() * FIREDANCER_ID_WEIGHT_RECORD_SZ;
 
-          for i in 0..stakes.len() {
-              let (vote_pubkey, node_pubkey, stake) = stakes[i];
-              let is_leader = leader_vote_keys.contains(&vote_pubkey);
-
-              if !needs_compression || is_leader {
-                  let offset = FIREDANCER_PACKET_HEADER_SZ + idx * FIREDANCER_VOTE_PACKET_RECORD_SZ;
-                  memory[offset..offset + 32].copy_from_slice(&vote_pubkey.to_bytes());
-                  memory[offset + 32..offset + 64].copy_from_slice(&node_pubkey.to_bytes());
-                  memory[offset + 64..offset + 72].copy_from_slice(&stake.to_le_bytes());
-                  idx += 1;
-              } else if idx != 0 && i > 0 && !leader_vote_keys.contains(&stakes[i - 1].0) {
-                  let prev_offset = FIREDANCER_PACKET_HEADER_SZ + (idx - 1) * FIREDANCER_VOTE_PACKET_RECORD_SZ;
-                  let prev_stake = u64::from_le_bytes(memory[prev_offset + 64..prev_offset + 72].try_into().unwrap());
-                  memory[prev_offset + 64..prev_offset + 72].copy_from_slice(&(prev_stake + stake).to_le_bytes());
-              } else {
-                  let offset = FIREDANCER_PACKET_HEADER_SZ + idx * FIREDANCER_VOTE_PACKET_RECORD_SZ;
-                  memory[offset..offset + 32].copy_from_slice(&dummy_pubkey.to_bytes());
-                  memory[offset + 32..offset + 64].copy_from_slice(&dummy_pubkey.to_bytes());
-                  memory[offset + 64..offset + 72].copy_from_slice(&stake.to_le_bytes());
-                  idx += 1;
-              }
-          }
-
-          // Compute id weights for Turbine tree: aggregate stake
-          // by node identity (handles 1:N vote-to-id mapping),
-          // sort by (stake desc, id desc), truncate to 40,200.
-          let mut id_stake_map: HashMap<Pubkey, u64> = HashMap::new();
-          for &(_, node_pubkey, stake) in stakes.iter() {
-              *id_stake_map.entry(node_pubkey).or_insert(0) += stake;
-          }
-          let mut id_weights: Vec<(Pubkey, u64)> = id_stake_map.into_iter().collect();
-          id_weights.sort_unstable_by(|(l_id, l_stake), (r_id, r_stake)| {
-              if r_stake == l_stake {
-                  r_id.cmp(l_id)
-              } else {
-                  r_stake.cmp(l_stake)
-              }
-          });
-          let excluded_id_stake: u64 = id_weights
-              .iter()
-              .skip(FIREDANCER_MAX_ID_WEIGHTS)
-              .map(|&(_, stake)| stake)
-              .sum();
-          id_weights.truncate(FIREDANCER_MAX_ID_WEIGHTS);
-
-          // Serialize id weight records (32B id + 8B stake) after
-          // the compressed vote weights.
-          let id_weights_base = FIREDANCER_PACKET_HEADER_SZ + idx * FIREDANCER_VOTE_PACKET_RECORD_SZ;
-          for (j, (id, stake)) in id_weights.iter().enumerate() {
-              let offset = id_weights_base + j * FIREDANCER_ID_WEIGHT_RECORD_SZ;
-              memory[offset..offset + 32].copy_from_slice(&id.to_bytes());
-              memory[offset + 32..offset + 40].copy_from_slice(&stake.to_le_bytes());
-          }
-
-          // Header: matches fd_stake_weight_msg_t layout (6 fields, 48 bytes)
-          memory[0..8].copy_from_slice(&epoch.to_le_bytes());
-          memory[8..16].copy_from_slice(&(idx as u64).to_le_bytes());              // staked_vote_cnt
-          memory[16..24].copy_from_slice(&(id_weights.len() as u64).to_le_bytes()); // staked_id_cnt
-          memory[24..32].copy_from_slice(&first_slot.to_le_bytes());
-          memory[32..40].copy_from_slice(&slot_cnt.to_le_bytes());
-          memory[40..48].copy_from_slice(&excluded_id_stake.to_le_bytes());        // excluded_stake
-
-          let msg_len = id_weights_base + id_weights.len() * FIREDANCER_ID_WEIGHT_RECORD_SZ;
-
-          unsafe extern "C" {
-              fn fd_ext_poh_publish_leader_schedule(data: *const u8, len: u64);
-          }
-          unsafe { fd_ext_poh_publish_leader_schedule(memory.as_ptr(), msg_len as u64); }
-      }
-  }
+            unsafe extern "C" {
+                fn fd_ext_poh_publish_leader_schedule(data: *const u8, len: u64);
+            }
+            unsafe {
+                fd_ext_poh_publish_leader_schedule(memory.as_ptr(), msg_len as u64);
+            }
+        }
+    }
 
     fn retain_latest(
         schedules: &mut HashMap<Epoch, Arc<LeaderSchedule>>,
