@@ -5,6 +5,7 @@ pub mod poh_controller;
 // our implementation.
 // pub mod poh_recorder;
 mod firedancer_poh_recorder;
+pub mod firedancer_poh_shutdown;
 pub mod old_poh_recorder;
 
 pub mod poh_recorder {

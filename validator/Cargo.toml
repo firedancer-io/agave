@@ -31,6 +31,7 @@ agave-feature-set = { workspace = true }
 agave-logger = { workspace = true }
 agave-snapshots = { workspace = true }
 agave-votor = { workspace = true }
+agave-votor-messages = { workspace = true }
 agave-votor-transport = { workspace = true }
 agave-xdp = { workspace = true }
 arc-swap = { workspace = true }
@@ -55,6 +56,7 @@ rayon = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
+solana-bls-signatures = { workspace = true }
 solana-account = { workspace = true }
 solana-accounts-db = { workspace = true }
 solana-clap-utils = { workspace = true }

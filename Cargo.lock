@@ -386,6 +386,7 @@ dependencies = [
  "agave-logger",
  "agave-snapshots",
  "agave-votor",
+ "agave-votor-messages",
  "agave-votor-transport",
  "agave-xdp",
  "arc-swap",
@@ -419,6 +420,7 @@ dependencies = [
  "solana-account 4.5.0",
  "solana-account-decoder",
  "solana-accounts-db",
+ "solana-bls-signatures",
  "solana-clap-utils",
  "solana-cli-config",
  "solana-cli-output",
@@ -9588,6 +9590,7 @@ dependencies = [
  "solana-transaction",
  "thiserror 2.0.19",
  "tikv-jemallocator",
+ "wincode",
 ]
 
 [[package]]

@@ -908,6 +908,12 @@ fn abort_working_bank(ctx: &mut LeaderContext, slot: Slot) -> Result<(), BankFor
 ///
 /// Broadcast keeps the original shred-header parent, but this marker updates
 /// the replay parent and double-merkle parent leaf for downstream validators.
+///
+/// FIREDANCER: currently unused.  Its only caller was the sad handover parent
+/// switch, which abandons the window instead -- see handle_parent_ready.  Kept
+/// because it is upstream code the switch would need again, and because the
+/// marker plumbing behind it (fd_ext_poh_alpenglow_publish_marker) is live and
+/// used by the genesis certificate marker.
 fn send_update_parent(
     poh_recorder: &RwLock<PohRecorder>,
     new_parent_block: Block,
@@ -927,11 +933,23 @@ fn send_update_parent(
 /// - ParentReady matches optimistic parent
 /// - this is a no-op, and a win.
 ///
-/// Sad path:
-/// - ParentReady does not match optimistic parent
-/// - we send an UpdateParent to switch to the correct parent (i.e., the one from ParentReady).
-/// - tell PohRecorder to stop sending us transactions
-/// - we clear the bank for the current slot
+/// Sad path, FIREDANCER: abandon the window rather than switching parents.
+///
+/// Upstream sends an UpdateParent, clears the bank and re-opens the SAME slot
+/// on the correct parent.  Firedancer's poh tile forbids that outright:
+/// clearing the bank raises highwater_leader_slot past the slot
+/// (fd_pohh_tile.c fd_ext_poh_alpenglow_clear_bank), and re-opening it then
+/// trips the FD_TEST in fd_ext_poh_begin_leader and kills the tile.  That is
+/// deliberate, not an oversight -- in-flight microblocks from pack are fenced
+/// purely by `slot < highwater_leader_slot`, so with both attempts carrying
+/// the same slot number a stale frag cannot be told from a live one.  The
+/// comment on that fence spells out the invariant: "we will not become leader
+/// for the same slot twice even if we are reset back in time".
+///
+/// Honouring the switch means threading an attempt counter through
+/// fd_became_leader_t and the pack->poh sigs, on the hot leader path, in code
+/// shared with pure Firedancer.  The happy path is where all of FLH's value
+/// is; the sad path is a rare correction.  So take the skipped slot instead.
 fn handle_parent_ready(
     ctx: &mut LeaderContext,
     leader_window_info: LeaderWindowInfo,
@@ -944,110 +962,32 @@ fn handle_parent_ready(
         return Ok(None);
     }
 
-    // Sad path: need to switch to the correct parent
+    // Sad path: the optimistic parent was wrong.  See the note above for why
+    // this abandons the window instead of switching to the right parent.
     trace!(
         "{:?}: Sad leader handover slot optimistic parent = {:?} != {:?} = parent from ParentReady",
         ctx.my_pubkey, optimistic_parent_block, leader_window_info.parent_block
     );
     ctx.slot_metrics.mark_leader_handover_sad();
 
-    // If the optimistic parent doesn't match the one specified in ParentReady, then
-    // this resets the block timer to the new parent's timer.
-    *block_timer = leader_window_info.block_timer;
-
-    // Important: We must shutdown and drain the record receiver BEFORE sending the UpdateParent
-    // marker. Otherwise, we could end up sending records for the old bank after the UpdateParent,
-    // which causes a divergence between the leader and replayers.
-    shutdown_and_drain_record_receiver(
-        &ctx.poh_recorder,
-        &mut ctx.record_receiver,
-        Some(&mut accumulated_txs),
-    )?;
-    send_update_parent(&ctx.poh_recorder, leader_window_info.parent_block)?;
-
     let slot = leader_window_info.start_slot;
-    let old_parent_slot = optimistic_parent_block.slot;
-    let Block {
-        slot: new_parent_slot,
-        block_id: new_parent_hash,
-    } = leader_window_info.parent_block;
 
-    let bank = ctx
-        .poh_recorder
-        .read()
-        .unwrap()
-        .bank()
-        .ok_or(PohRecorderError::ResetBankError(
-            old_parent_slot,
-            new_parent_slot,
-        ))?;
-    let cleared_bank_id = bank.bank_id();
-    bank.wait_for_inflight_commits();
-    let entry_bytes_consumed = bank.entry_bytes_budget().consumed();
-    ctx.bank_forks_controller
-        .clear_bank(slot)
-        .map_err(|_| PohRecorderError::ResetBankError(old_parent_slot, new_parent_slot))?;
-    ctx.poh_recorder.write().unwrap().clear_bank(true);
+    // Shut the record intake down and drain it before clearing, the same way
+    // the window-moved-on path does, so no record for the abandoned bank can
+    // land in the next one.  shutdown() is an atomic store and safe to repeat
+    // if FLH already shut it down while waiting for ParentReady.  Then release
+    // the leader bank in the poh tile and reset onto the parent.
+    abort_failed_working_bank(ctx, slot).map_err(|_| {
+        PohRecorderError::ResetBankError(
+            optimistic_parent_block.slot,
+            leader_window_info.parent_block.slot,
+        )
+    })?;
 
-    if let Some(sender) = &ctx.entry_notification_sender
-        && let Err(err) = sender.send(EntryNotification::UpdateParent(EntryUpdateParentInfo {
-            slot,
-            cleared_bank_id,
-            parent_slot: new_parent_slot,
-            parent_block_id: new_parent_hash,
-        }))
-    {
-        warn!("UpdateParent entry notification send failed: {err:?}");
-    }
-
-    // Create the new bank before re-injecting transactions to avoid racing.
-    let new_bank = start_leader_wait_for_parent_replay_with_used_bytes(
-        slot,
-        new_parent_slot,
-        Some(new_parent_hash),
-        *block_timer,
-        entry_bytes_consumed,
-        ctx,
-    )
-    .map_err(|_| PohRecorderError::ResetBankError(old_parent_slot, new_parent_slot))?;
-    update_leader_window_clock(ctx, slot, *block_timer);
-
-    // Re-inject accumulated transactions back to banking stage for rescheduling
-    let packets: Vec<BytesPacket> = accumulated_txs
-        .into_iter()
-        .filter_map(|tx| {
-            let serialized = wincode::serialize(&tx)
-                .inspect_err(|e| {
-                    error!(
-                        "failed to serialize transaction for rescheduling - this should never \
-                         happen: {e:?}"
-                    )
-                })
-                .ok()?;
-            let buffer = Bytes::from(serialized);
-            let mut meta = Meta::default();
-            meta.size = buffer.len();
-            Some(BytesPacket::new(buffer, meta))
-        })
-        .collect();
-
-    if !packets.is_empty() {
-        info!(
-            "{}: rescheduling {} txs after sad leader handover for slot {slot}",
-            ctx.my_pubkey,
-            packets.len(),
-        );
-        let batch: PacketBatch = packets.into();
-        let banking_packet_batch = Arc::new(batch);
-        ctx.banking_stage_sender
-            // technically this send can evict to make room (which may drop a few packets)
-            // but this should (hopefully) not be significant amounts since we are evicting
-            // at most 1 batch.
-            .send(banking_packet_batch)
-            .map_err(|_| PohRecorderError::RescheduleTransactionsError(slot))?;
-    }
-
-    Ok(Some(new_bank))
+    // WindowMovedOn is the right signal and needs no new variant: produce_window
+    // skips its own abort_failed_working_bank for it, because that path is
+    // expected to have already aborted -- which is what we just did.
+    Err(PohRecorderError::WindowMovedOn(slot))
 }
 
 fn update_leader_window_clock(ctx: &LeaderContext, slot: Slot, started_at: Instant) {
@@ -1140,7 +1080,14 @@ fn start_leader_wait_for_parent_replay_with_used_bytes(
             ));
         }
 
-        match maybe_start_leader(slot, parent_slot, parent_hash, entry_bytes_consumed, ctx) {
+        match maybe_start_leader(
+            slot,
+            parent_slot,
+            parent_hash,
+            entry_bytes_consumed,
+            block_timer,
+            ctx,
+        ) {
             Ok(()) => {
                 slot_delay_start.stop();
                 let _ = ctx
@@ -1248,6 +1195,7 @@ fn maybe_start_leader(
     parent_slot: Slot,
     parent_hash: Option<Hash>,
     entry_bytes_consumed: u64,
+    block_timer: Instant,
     ctx: &mut LeaderContext,
 ) -> Result<(), StartLeaderError> {
     if ctx.bank_forks.read().unwrap().get(slot).is_some() {
@@ -1278,7 +1226,7 @@ fn maybe_start_leader(
     }
 
     // Create and insert the bank
-    create_and_insert_leader_bank(slot, parent_bank, entry_bytes_consumed, ctx)
+    create_and_insert_leader_bank(slot, parent_bank, entry_bytes_consumed, block_timer, ctx)
 }
 
 /// Creates and inserts the leader bank `slot` of this window with
@@ -1287,6 +1235,7 @@ fn create_and_insert_leader_bank(
     slot: Slot,
     parent_bank: Arc<Bank>,
     entry_bytes_consumed: u64,
+    block_timer: Instant,
     ctx: &mut LeaderContext,
 ) -> Result<(), StartLeaderError> {
     let parent_slot = parent_bank.slot();
@@ -1371,7 +1320,26 @@ fn create_and_insert_leader_bank(
     let tpu_bank = ctx.bank_forks_controller.insert_bank(tpu_bank)?;
 
     let bank_id = tpu_bank.bank_id();
-    ctx.poh_recorder.write().unwrap().set_bank(tpu_bank);
+
+    // Firedancer's pack tile needs to stop feeding this bank before we end
+    // the block, and it can only do that against a deadline it has been
+    // told. Give it ours -- the same block_timer and block_timeout that
+    // record_and_complete_block will act on -- rather than letting the poh
+    // tile derive one from its own slot grid, which is anchored at the last
+    // reset and does not track this window.
+    // BankWithScheduler derefs to Arc<Bank>, not to Bank, so &*tpu_bank
+    // gives the &Arc<Bank> that the other block_timeout call site passes.
+    let block_deadline_nanos =
+        u64::try_from(time_left(block_timer, block_timeout(&*tpu_bank, slot)).as_nanos())
+            .unwrap_or(u64::MAX);
+
+    {
+        // One lock: the deadline and the bank it describes must not be
+        // separated by another writer.
+        let mut w_poh_recorder = ctx.poh_recorder.write().unwrap();
+        w_poh_recorder.set_alpenglow_block_deadline_ns(block_deadline_nanos);
+        w_poh_recorder.set_bank(tpu_bank);
+    }
 
     // If this is the first alpenglow block, emit the genesis certificate marker.
     // This happens before record intake restarts, so a send failure can be
@@ -1663,7 +1631,7 @@ mod tests {
             genesis_cert_block_marker: test_genesis_cert_block_marker(),
         };
 
-        create_and_insert_leader_bank(1, root_bank.clone(), 0, &mut ctx).unwrap();
+        create_and_insert_leader_bank(1, root_bank.clone(), 0, Instant::now(), &mut ctx).unwrap();
         assert!(ctx.poh_recorder.read().unwrap().has_bank());
         assert!(ctx.bank_forks.read().unwrap().get(1).is_some());
 
@@ -1693,7 +1661,7 @@ mod tests {
                 .recv_timeout(Duration::from_secs(1))
                 .unwrap();
         });
-        create_and_insert_leader_bank(1, root_bank, 0, &mut ctx).unwrap();
+        create_and_insert_leader_bank(1, root_bank, 0, Instant::now(), &mut ctx).unwrap();
         assert!(ctx.poh_recorder.read().unwrap().has_bank());
         assert!(ctx.bank_forks.read().unwrap().get(1).is_some());
 
@@ -1785,7 +1753,8 @@ mod tests {
             genesis_cert_block_marker,
         };
 
-        let err = create_and_insert_leader_bank(2, parent_bank, 0, &mut ctx).unwrap_err();
+        let err =
+            create_and_insert_leader_bank(2, parent_bank, 0, Instant::now(), &mut ctx).unwrap_err();
         assert!(matches!(
             err,
             StartLeaderError::PohRecorder(PohRecorderError::SendError(_))
@@ -1863,7 +1832,7 @@ mod tests {
             genesis_cert_block_marker: test_genesis_cert_block_marker(),
         };
 
-        create_and_insert_leader_bank(1, root_bank, 0, &mut ctx).unwrap();
+        create_and_insert_leader_bank(1, root_bank, 0, Instant::now(), &mut ctx).unwrap();
         let bank_id = ctx.poh_recorder.read().unwrap().bank().unwrap().bank_id();
         record_sender
             .try_send(Record::new(
@@ -2002,7 +1971,8 @@ mod tests {
         };
 
         let leader_slot = 4;
-        create_and_insert_leader_bank(leader_slot, optimistic_parent, 0, &mut ctx).unwrap();
+        create_and_insert_leader_bank(leader_slot, optimistic_parent, 0, Instant::now(), &mut ctx)
+            .unwrap();
         let optimistic_bank = ctx.poh_recorder.read().unwrap().bank().unwrap();
         let optimistic_bank_id = optimistic_bank.bank_id();
         const ENTRY_BYTES_CONSUMED_BEFORE_HANDOVER: u64 = 1_024;

@@ -5,15 +5,17 @@ use solana_hash::Hash;
 use solana_clock::Slot;
 use solana_runtime::{installed_scheduler_pool::BankWithScheduler,bank::Bank};
 use solana_ledger::blockstore::Blockstore;
-use solana_entry::block_component::{BlockFooterV1, VersionedBlockMarker};
+use solana_entry::block_component::{BlockComponent, BlockFooterV1, VersionedBlockMarker};
 use crossbeam_channel::{Sender, Receiver, TrySendError};
 
 use solana_ledger::leader_schedule_cache::LeaderScheduleCache;
 use solana_poh_config::PohConfig;
 
+use log::{error, trace};
 use std::ffi::c_void;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use solana_clock::BankId;
 use solana_transaction::versioned::VersionedTransaction;
@@ -28,10 +30,16 @@ unsafe extern "C" {
     fn fd_ext_poh_acquire_leader_bank() -> *const c_void;
     fn fd_ext_poh_reset_slot() -> u64;
     fn fd_ext_poh_reached_leader_slot(out_leader_slot: *mut u64, out_reset_slot: *mut u64) -> i32;
-    fn fd_ext_poh_begin_leader(bank: *const c_void, slot: u64, epoch: u64, hashcnt_per_tick: u64, tick_duration_nanos: u64, cus_block_limit: u64, cus_vote_cost_limit: u64, cus_account_cost_limit: u64, cus_allocated_data_size_limit: u64, max_data_shreds: u64);
-    fn fd_ext_poh_reset(reset_bank_slot: u64, reset_blockhash: *const u8, hashcnt_per_tick: u64, tick_duration_nanos: u64, block_id: *const u8, features_activation_slot: *const u64, shred_slot_limits: *const u64);
+    fn fd_ext_poh_begin_leader(bank: *const c_void, slot: u64, epoch: u64, hashcnt_per_tick: u64, tick_duration_nanos: u64, cus_block_limit: u64, cus_vote_cost_limit: u64, cus_account_cost_limit: u64, cus_allocated_data_size_limit: u64, max_data_shreds: u64, vote_only: i32, block_deadline_nanos: u64);
+    fn fd_ext_poh_reset(reset_bank_slot: u64, reset_blockhash: *const u8, hashcnt_per_tick: u64, tick_duration_nanos: u64, block_id: *const u8, features_activation_slot: *const u64, shred_slot_limits: *const u64, alpenglow: i32);
     fn fd_ext_poh_get_leader_after_n_slots(n: u64, out_pubkey: *mut u8) -> i32;
     fn fd_ext_poh_update_active_descendant(max_active_descendant: u64);
+    fn fd_ext_poh_alpenglow_enable();
+    fn fd_ext_poh_alpenglow_begin_tick();
+    fn fd_ext_poh_alpenglow_try_get_tick(out_tick_hash: *mut u8) -> i32;
+    fn fd_ext_poh_alpenglow_publish_footer(footer: *const u8, footer_sz: u64) -> i32;
+    fn fd_ext_poh_alpenglow_publish_marker(marker: *const u8, marker_sz: u64) -> i32;
+    fn fd_ext_poh_alpenglow_clear_bank();
 }
 
 #[unsafe(no_mangle)]
@@ -67,6 +75,42 @@ pub struct PohRecorder {
   pub ticks_per_slot: u64,
   // Alpenglow related migration things
   pub is_alpenglow_enabled: bool,
+  /* Nanoseconds left until BlockCreationLoop will end the next block it
+     opens, as BCL itself measures it.  Set by BCL immediately before
+     set_bank, consumed by the following fd_ext_poh_begin_leader, and
+     reset so a set_bank from anywhere else cannot inherit a stale one.
+
+     Without it the poh tile derives pack's deadline from its own
+     idealized slot grid, which is anchored at the last reset and does
+     not track BCL's window at all.  The two then only agree by
+     accident, and the accident can go either way: pack ending late
+     leaves microblocks in flight when the tick freezes the bank, which
+     panics in Bank::commit_transactions.
+
+     u64::MAX means "not set" -- the legacy grid is used, which is what
+     every non-alpenglow caller wants. */
+  pub alpenglow_block_deadline_ns: u64,
+
+  /* A clone of the signal handed to the poh tile at initialization.
+     Registering the tick only drives tick_height to max; replay is what
+     actually freezes the bank, and it will not look until something
+     wakes it.  Upstream pokes this before waiting (old_poh_recorder.rs
+     wait_for_freeze_and_send_footer) and the port dropped it, so the
+     freeze wait was landing on replay's own schedule -- measured 0.4 to
+     100.4ms, median 56.4, which was 99% of the entire block completion
+     tail. */
+  clear_bank_signal: Option<Sender<bool>>,
+
+  /* Identity of the bank the poh tile was last reset onto.  The tile only
+     knows the reset slot (fd_ext_poh_reset_slot), and fast leader handover
+     can hand the same slot back on a different parent, so BlockCreationLoop
+     compares bank ids rather than slots before deciding to reset.  Tracked
+     here because nothing on the C side carries a bank id.
+
+     Only meaningful under alpenglow, where BlockCreationLoop is the sole
+     resetter.  Under TowerBFT the tile advances its own reset slot without
+     telling us, but nothing calls start_bank_id() on that path. */
+  start_bank_id: BankId,
 }
 
 impl PohRecorder {
@@ -74,7 +118,7 @@ impl PohRecorder {
     pub fn new_with_clear_signal(
         tick_height: u64,
         last_entry_hash: Hash,
-        _start_bank: Arc<Bank>,
+        start_bank: Arc<Bank>,
         next_leader_slot: Option<(Slot, Slot)>,
         ticks_per_slot: u64,
         _delay_leader_block_for_pending_fork: bool,
@@ -87,6 +131,9 @@ impl PohRecorder {
         /* Just silence the unused warning for old_poh_recorder, without needing to modify the file. */
         let _silence_warnings = super::old_poh_recorder::create_test_recorder;
 
+        /* Keep a clone: the tile takes ownership of the boxed sender, but
+           tick_alpenglow needs to poke replay itself. */
+        let clear_bank_signal_local = clear_bank_signal.clone();
         let clear_bank_sender: *mut Sender<bool> = match clear_bank_signal {
             Some(sender) => Box::into_raw(Box::new(sender)),
             None => std::ptr::null_mut(),
@@ -105,7 +152,37 @@ impl PohRecorder {
         (Self { is_exited: is_exited,
                 shared_leader_state: SharedLeaderState::new(tick_height, leader_first_tick_height, next_leader_slot),
                 ticks_per_slot,
-                is_alpenglow_enabled: false }, dummy1.1)
+                is_alpenglow_enabled: false,
+                alpenglow_block_deadline_ns: u64::MAX,
+                clear_bank_signal: clear_bank_signal_local,
+                start_bank_id: start_bank.bank_id() }, dummy1.1)
+    }
+
+    /* Wake replay so it freezes the bank now rather than whenever it next
+       happens to look.  Copied from old_poh_recorder::notify_replay_wakeup;
+       upstream calls this at the top of wait_for_freeze_and_send_footer,
+       immediately after the tick is registered. */
+    fn notify_replay_wakeup(&self) {
+        if let Some(signal) = &self.clear_bank_signal {
+            match signal.try_send(true) {
+                Ok(()) => {}
+                Err(TrySendError::Full(_)) => {
+                    trace!("replay wake up signal channel is full.")
+                }
+                Err(TrySendError::Disconnected(_)) => {
+                    trace!("replay wake up signal channel is disconnected.")
+                }
+            }
+        }
+    }
+
+    /* Hand the poh tile the deadline BlockCreationLoop is going to hold
+       the next block to, so pack stops against BCL's clock instead of
+       its own.  Call immediately before set_bank, under the same write
+       lock, or the deadline and the bank it belongs to can be separated
+       by another writer. */
+    pub fn set_alpenglow_block_deadline_ns(&mut self, deadline_ns: u64) {
+        self.alpenglow_block_deadline_ns = deadline_ns;
     }
 
     pub fn leader_after_n_slots(&self, slots: u64) -> Option<Pubkey> {
@@ -205,6 +282,13 @@ impl PohRecorder {
         let cus_allocated_data_size_limit = bank.read_cost_tracker().unwrap().get_allocated_data_size_limit();
         let max_data_shreds: u64 = bank.max_data_shreds_per_slot() as u64;
 
+        /* Banks created during the alpenglow migration are vote only, and
+           a replaying peer rejects the whole block if it carries anything
+           else (BlockstoreProcessorError::UserTransactionsInVoteOnlyBank).
+           Agave's banking stage checks the bank itself; pack cannot, so it
+           has to be told not to schedule non vote transactions. */
+        let vote_only = bank.vote_only_bank() as i32;
+
         let leader_state = self.shared_leader_state.load();
         let leader_first_tick_height = leader_state.leader_first_tick_height();
         let tick_height = leader_state.tick_height();
@@ -217,12 +301,18 @@ impl PohRecorder {
             next_leader_slot,
         )));
 
+        /* One shot: whoever set it meant it for this bank.  Clearing it
+           here keeps a set_bank from the TowerBFT path (banking_stage)
+           from inheriting a deadline BCL left behind. */
+        let block_deadline_nanos = std::mem::replace(&mut self.alpenglow_block_deadline_ns, u64::MAX);
+
         let leader_bank: *const Bank = Arc::into_raw( bank );
-        unsafe { fd_ext_poh_begin_leader( leader_bank as *const c_void, slot, epoch, hashes_per_tick, tick_duration_nanos, cus_block_limit, cus_vote_cost_limit, cus_account_cost_limit, cus_allocated_data_size_limit, max_data_shreds ) };
+        unsafe { fd_ext_poh_begin_leader( leader_bank as *const c_void, slot, epoch, hashes_per_tick, tick_duration_nanos, cus_block_limit, cus_vote_cost_limit, cus_account_cost_limit, cus_allocated_data_size_limit, max_data_shreds, vote_only, block_deadline_nanos ) };
     }
 
     pub fn reset(&mut self, reset_bank: Arc<Bank>, next_leader_slot: Option<(Slot, Slot)>) {
         /* Must be implemented, used by replay stage. */
+        self.start_bank_id = reset_bank.bank_id();
         let tick_height = (self.start_slot() + 1) * self.ticks_per_slot;
         let (leader_first_tick_height, _, _) =
             crate::old_poh_recorder::PohRecorder::compute_leader_slot_tick_heights(next_leader_slot, self.ticks_per_slot);
@@ -272,9 +362,29 @@ impl PohRecorder {
         }
 
         let shred_slot_limits: [u64; 5] = reset_bank.shred_slot_limits( reset_bank_slot );
+
+        /* Whether the cluster is running alpenglow, which selects the
+           shape of the blocks the poh tile produces.  A bank is
+           alpenglow once it carries the genesis certificate: set on the
+           genesis bank when the certificate is already in the accounts
+           (alpenglow activated at genesis), or on the first alpenglow
+           bank when the marker is processed (migration), and inherited
+           by every descendant.  Deliberately not derived from the
+           feature activation slot, which lands on an epoch boundary and
+           is not where alpenglow actually starts.
+
+           Once enable_alpenglow has been called the tile stays in
+           alpenglow mode regardless.  On the migration path the banks
+           around the transition are still TowerBFT banks -- the alpenglow
+           genesis block is the last of them -- and BlockCreationLoop
+           resets onto one of those immediately after enabling, and again
+           before every leader slot whose parent is not where poh sits.
+           Taking the bank alone would switch the tile straight back. */
+        let alpenglow = (reset_bank.is_alpenglow() || self.is_alpenglow_enabled) as i32;
+
         unsafe { fd_ext_poh_reset( reset_bank_slot, reset_bank_blockhash.as_ref().as_ptr(),
                   hashes_per_tick, tick_duration_nanos, block_id_ptr, features_activation_slot.as_ref().as_ptr(),
-                  shred_slot_limits.as_ref().as_ptr() ) };
+                  shred_slot_limits.as_ref().as_ptr(), alpenglow ) };
     }
 
     pub fn track_transaction_indexes(&mut self) {
@@ -282,8 +392,22 @@ impl PohRecorder {
     }
 
     pub fn enable_alpenglow(&mut self) {
-        /* Unimplemented, Alpenglow */
-        self.is_alpenglow_enabled = false;
+        /* Upstream clears the tick cache and drops poh into low power mode
+           here, which is how it stops producing ticks.  The equivalent is
+           switching the poh tile, which owns the hash chain and the entry
+           stream.
+
+           The tile cannot work this out for itself.  It learns alpenglow
+           from the flag on fd_ext_poh_reset, which is driven by the reset
+           bank, and on the migration path every bank up to and including
+           the alpenglow genesis block is still a TowerBFT bank -- a slot is
+           only an alpenglow block once it is strictly after the genesis
+           certificate's block.  So the first block the tile is asked to
+           produce under alpenglow would be shaped as a TowerBFT one.
+
+           Called both here and from BlockCreationLoop, and idempotent. */
+        self.is_alpenglow_enabled = true;
+        unsafe { fd_ext_poh_alpenglow_enable() };
     }
 
     pub fn record(
@@ -296,27 +420,141 @@ impl PohRecorder {
         unimplemented!("firedancer does not use BlockCreationLoop")
     }
 
+    /* Ends an alpenglow block.  Mirrors the sequence upstream performs in
+       flush_cache: register the tick, wait for the bank to freeze, send
+       the footer carrying that bank's own hash, then send the tick.
+
+       The split across the FFI exists because neither side can do it
+       alone.  Only the poh tile knows the hash chain, so it computes the
+       tick; only this side can build and serialize the footer, and it
+       cannot do so until registering the tick has driven tick_height to
+       max_tick_height and replay has frozen the bank.
+
+       Blocking here is fine and is what upstream does.  This runs on the
+       BlockCreationLoop thread, not on the tile, and the poh lock is not
+       held across the wait, so the tile keeps running throughout. */
     pub fn tick_alpenglow(
         &mut self,
-        _max_tick_height: u64,
-        _footer: BlockFooterV1,
+        max_tick_height: u64,
+        mut footer: BlockFooterV1,
     ) -> old_poh_recorder::Result<()> {
-        /* Unimplemented, Alpenglow */
-        unimplemented!("firedancer does not use BlockCreationLoop")
+        let Some(bank) = self.bank() else {
+            return Err(PohRecorderError::MaxHeightReached);
+        };
+
+        /* Ask the poh tile to end the block, then wait for the tick hash.
+           It only appears once every microblock pack sent for this slot has
+           been mixed in: registering the tick freezes the bank, and a
+           microblock still in flight would then be committed into a frozen
+           bank, which panics in Bank::commit_transactions.  Draining is the
+           tile's own work, so it is polled from here rather than blocking
+           the tile.  Blocking is fine on this thread, and bounded by the
+           same slot duration used for the freeze wait below. */
+        let mut tick_hash = [0u8; 32];
+        unsafe { fd_ext_poh_alpenglow_begin_tick() };
+
+        let drain_start = Instant::now();
+        let delta_block = Duration::from_nanos( bank.ns_per_slot as u64 );
+        while 0 == unsafe { fd_ext_poh_alpenglow_try_get_tick( tick_hash.as_mut_ptr() ) } {
+            if self.is_exited.load(Ordering::Relaxed) {
+                return Err(PohRecorderError::ChannelDisconnected);
+            }
+            if drain_start.elapsed() > delta_block {
+                error!(
+                    "slot = {} block production failure. timed out draining in flight \
+                     microblocks before the tick.",
+                    bank.slot()
+                );
+                return Err(PohRecorderError::BankFreezeTimeout(bank.slot()));
+            }
+            std::hint::spin_loop();
+        }
+        let tick_hash = Hash::new_from_array( tick_hash );
+
+        /* Drives tick_height to max_tick_height, which is what makes
+           replay freeze the bank.  BlockCreationLoop has already set the
+           height to max_tick_height-1 for exactly this reason. */
+        bank.register_tick( &tick_hash, &BankWithScheduler::no_scheduler_available() );
+
+        /* Registering the tick only drives tick_height to max_tick_height;
+           replay is what freezes the bank, and it has to be told to look.
+           Without this the wait below lands on replay's own schedule --
+           measured 0.4 to 100.4ms, median 56.4, which was 99% of the whole
+           block completion tail and the single largest cost in the leader
+           path.  Upstream does the same thing in the same place
+           (old_poh_recorder.rs wait_for_freeze_and_send_footer). */
+        self.notify_replay_wakeup();
+
+        let start = Instant::now();
+        while !bank.is_frozen() && !self.is_exited.load(Ordering::Relaxed) {
+            if start.elapsed() > delta_block {
+                break;
+            }
+            std::hint::spin_loop();
+        }
+        if !bank.is_frozen() {
+            if self.is_exited.load(Ordering::Relaxed) {
+                return Err(PohRecorderError::ChannelDisconnected);
+            }
+            error!(
+                "slot = {} block production failure. bank freezing timed out.",
+                bank.slot()
+            );
+            return Err(PohRecorderError::BankFreezeTimeout(bank.slot()));
+        }
+
+        footer.bank_hash = bank.hash();
+        debug_assert_eq!( max_tick_height, bank.max_tick_height() );
+
+        /* The poh tile publishes these bytes verbatim, so serialize the
+           whole BlockComponent: that is what carries the zero entry count
+           marking the batch as a marker rather than a run of entries.
+           wincode, not bincode - see entry/src/block_component.rs. */
+        let component = BlockComponent::new_block_marker(
+            VersionedBlockMarker::from_block_footer( footer ) );
+        let bytes = wincode::serialize( &component )
+            .map_err(|_| PohRecorderError::MaxHeightReached)?;
+
+        if unsafe { fd_ext_poh_alpenglow_publish_footer( bytes.as_ptr(), bytes.len() as u64 ) } != 0 {
+            error!(
+                "slot = {} block production failure. footer of {} bytes rejected by the poh tile.",
+                bank.slot(),
+                bytes.len()
+            );
+            return Err(PohRecorderError::MaxHeightReached);
+        }
+
+        Ok(())
     }
 
+    /* Abandons the block in progress.  BlockCreationLoop calls this when a
+       window is aborted, for example once the cluster has moved on to a
+       later parent.  set_shared_state is ignored: the leader state this
+       recorder exposes is derived from the tile, which is cleared below. */
     pub fn clear_bank(&mut self, _set_shared_state: bool) {
-        /* Unimplemented, used by BlockCreationLoop */
-        unimplemented!("firedancer does not use BlockCreationLoop")
+        unsafe { fd_ext_poh_alpenglow_clear_bank() };
     }
 
+    /* Identity of the bank the current poh state is based on.  Under
+       alpenglow BlockCreationLoop calls this before every leader slot,
+       so it cannot stay unimplemented. */
     pub fn start_bank_id(&self) -> BankId {
-        /* Unimplemented, used by BlockCreationLoop */
-        unimplemented!("firedancer does not use BlockCreationLoop")
+        self.start_bank_id
     }
 
-    pub fn send_marker(&mut self, _marker: VersionedBlockMarker) -> Result<()> {
-        /* No-op - used by BlockCreationLoop */
+    /* Queues a block marker for the poh tile to publish.  Every alpenglow
+       block opens with a block header, and a sad handover adds an update
+       parent marker.  The footer does not come through here; it is sent by
+       tick_alpenglow, which has to interleave it with the tick. */
+    pub fn send_marker(&mut self, marker: VersionedBlockMarker) -> Result<()> {
+        let component = BlockComponent::new_block_marker( marker );
+        let bytes = wincode::serialize( &component )
+            .map_err(|_| PohRecorderError::MaxHeightReached)?;
+
+        if unsafe { fd_ext_poh_alpenglow_publish_marker( bytes.as_ptr(), bytes.len() as u64 ) } != 0 {
+            error!( "failed to queue a {} byte alpenglow block marker", bytes.len() );
+            return Err(PohRecorderError::MaxHeightReached);
+        }
         Ok(())
     }
 }

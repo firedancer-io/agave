@@ -105,7 +105,7 @@ use {
         num::{NonZeroUsize, Saturating},
         result,
         sync::{
-            Arc, RwLock,
+            Arc, OnceLock, RwLock,
             atomic::{AtomicBool, AtomicU64, Ordering},
         },
         thread::{self, Builder, JoinHandle},
@@ -728,6 +728,117 @@ impl ReplayLoopTiming {
             self.last_submit = now;
         }
     }
+}
+
+/// FIREDANCER: lets the store tile finish a leader block.
+///
+/// Replay deliberately does not notify votor about a leader bank, because at
+/// freeze time it has no block id yet: shredding has not finished, so
+/// blockstore has no double merkle root to give it.  Upstream that is
+/// broadcast stage's job, via set_block_id_and_send once the last shred is
+/// out.  Frankendancer has no broadcast stage - the shred and store tiles do
+/// that work - so the store tile calls fd_ext_blockstore_set_alpenglow_block_id
+/// below, and it needs these two to finish the handoff.
+///
+/// Without the notification votor never learns the block exists, never
+/// notarizes it, and skips the whole window once TimeoutCrashedLeader fires.
+static FD_LEADER_BLOCK_NOTIFY: OnceLock<(VotorEventSender, Arc<MigrationStatus>)> = OnceLock::new();
+
+/// FIREDANCER: called once during validator startup.
+pub fn fd_ext_leader_block_notify_init(
+    votor_event_sender: VotorEventSender,
+    migration_status: Arc<MigrationStatus>,
+) {
+    let _ = FD_LEADER_BLOCK_NOTIFY.set((votor_event_sender, migration_status));
+}
+
+/// FIREDANCER: tell votor that shreds have arrived for `slot`.
+///
+/// Upstream this comes from retransmit_stage's notify_subscribers, but
+/// Firedancer's shred ingest is the C shred tile and XDP owns the shred port,
+/// so RetransmitStage never observes a shred and VotorEvent::FirstShred never
+/// fires.  That is not cosmetic: event_handler's TimeoutCrashedLeader skips
+/// the entire leader window unless we have either already voted in it or seen
+/// a shred for it, so without this a leader that is merely slow has its whole
+/// window skipped.
+///
+/// Called from the store tile for every FEC set that came from the network.
+/// The filtering matches upstream: only window-start slots carry a timer, and
+/// only once alpenglow is live.  Deduplication is the caller's, which only
+/// calls on a slot it has not reported before.
+#[unsafe(no_mangle)]
+pub extern "C" fn fd_ext_votor_first_shred(slot: u64) {
+    let Some((votor_event_sender, migration_status)) = FD_LEADER_BLOCK_NOTIFY.get() else {
+        return;
+    };
+
+    if !migration_status.should_send_votor_event(slot)
+        || !slot.is_multiple_of(NUM_CONSECUTIVE_LEADER_SLOTS.get() as u64)
+    {
+        return;
+    }
+
+    // Dropping one of these only costs the early-skip protection for that
+    // window, so it is not worth blocking the store tile over.
+    if let Err(err) = votor_event_sender.try_send(VotorEvent::FirstShred(slot)) {
+        warn!("slot {slot} could not notify votor of first shred: {err:?}");
+    }
+}
+
+/// FIREDANCER: set a leader block's alpenglow block id and tell votor about it.
+///
+/// Pre-alpenglow a block's id is the last data shred's merkle root, which is
+/// also what shreds chain with, so the store tile has it to hand.  Under
+/// alpenglow the id is the double merkle root instead, which the blockstore
+/// computed when inserting the slot's last shreds, so it is read back here
+/// rather than recomputed in C.
+///
+/// Mirrors broadcast_utils::set_block_id_and_send.  Returns 0 on success.
+#[unsafe(no_mangle)]
+pub extern "C" fn fd_ext_blockstore_set_alpenglow_block_id(
+    blockstore: *const std::ffi::c_void,
+    bank: *const std::ffi::c_void,
+    slot: u64,
+) -> i32 {
+    let blockstore = unsafe { &*(blockstore as *const Blockstore) };
+
+    // The store tile owns its reference and releases it separately, so take
+    // an extra one rather than consuming the caller's.
+    let bank: Arc<Bank> = unsafe {
+        Arc::increment_strong_count(bank as *const Bank);
+        Arc::from_raw(bank as *const Bank)
+    };
+
+    let block_id = match blockstore.get_double_merkle_root(slot, BlockLocation::Original) {
+        Ok(Some(block_id)) => block_id,
+        Ok(None) => {
+            error!("slot {slot} has no double merkle root, cannot set the alpenglow block id");
+            return -1;
+        }
+        Err(err) => {
+            error!("slot {slot} double merkle root lookup failed: {err:?}");
+            return -1;
+        }
+    };
+
+    bank.set_block_id(Some(block_id));
+
+    let Some((votor_event_sender, migration_status)) = FD_LEADER_BLOCK_NOTIFY.get() else {
+        error!("slot {slot} block id set before the votor notifier was initialized");
+        return -1;
+    };
+
+    if bank.is_frozen() && migration_status.should_send_votor_event(slot) {
+        if let Err(err) = votor_event_sender.send(VotorEvent::Block(CompletedBlock {
+            slot,
+            bank,
+        })) {
+            error!("slot {slot} failed to notify votor of the completed block: {err:?}");
+            return -1;
+        }
+    }
+
+    0
 }
 
 pub struct ReplayStage {

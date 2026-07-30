@@ -29,9 +29,6 @@ use {
         },
         tpu::{Tpu, TpuSockets},
         tvu::{AlpenglowInitializationState, Tvu, TvuConfig, TvuSockets},
-        // FIREDANCER: Sizes the reward_votes_sender channel created below, which
-        // must exist for BLS sigverify construction even without Alpenglow.
-        tvu::MAX_ALPENGLOW_PACKET_NUM,
     },
     agave_snapshots::{
         SnapshotInterval, snapshot_archive_info::SnapshotArchiveInfoGetter as _,
@@ -45,7 +42,7 @@ use {
     agave_xdp::transmitter::{Transmitter, TransmitterBuilder, XdpSender},
     anyhow::{Result, anyhow},
     arc_swap::ArcSwap,
-    crossbeam_channel::{Receiver, bounded, unbounded},
+    crossbeam_channel::{Receiver, Sender, bounded, unbounded},
     serde::{Deserialize, Serialize},
     solana_account::{ReadableAccount, state_traits::StateMutWincode as _},
     solana_accounts_db::{
@@ -103,10 +100,11 @@ use {
     solana_metrics::{datapoint_info, metrics::metrics_config_sanity_check},
     solana_net_utils::{PinnedXdpSender, SocketAddrSpace},
     solana_poh::{
+        firedancer_poh_shutdown::FiredancerPohShutdown,
         poh_controller::PohController,
         poh_recorder::PohRecorder,
         poh_service::{self, PohService},
-        record_channels::record_channels,
+        record_channels::{RecordReceiver, RecordSender, record_channels},
         transaction_recorder::TransactionRecorder,
     },
     solana_pubkey::Pubkey,
@@ -784,6 +782,26 @@ impl ValidatorTpuConfig {
     }
 }
 
+/// FIREDANCER: BlockCreationLoop and the channel ends that have to outlive
+/// it.  Always constructed, as upstream does, because the migration needs the
+/// loop to already exist when the cluster switches to alpenglow mid run.  It
+/// parks on the RecordReceiver handoff until then.
+struct AlpenglowBlockCreation {
+    /// Held so the loop's thread stays alive.  Deliberately not joined, see
+    /// the note in Validator::join().
+    _block_creation_loop: BlockCreationLoop,
+    /// Nothing ever sends on the record channel, because the record pump is
+    /// the C pack -> bank -> pohh path, but BlockCreationLoop treats a
+    /// disconnected record channel as fatal, so the sender must outlive it.
+    _record_sender: RecordSender,
+    /// Carries the RecordReceiver handoff that releases the loop.  Held so
+    /// that channel never disconnects underneath it: start_loop returns if it
+    /// does, and dropping its Finalizer exits the validator.
+    _record_receiver_sender: Sender<RecordReceiver>,
+    /// Performs the handoff, and switches PoH out of tick production first.
+    _poh_shutdown: FiredancerPohShutdown,
+}
+
 pub struct Validator {
     /// A global flag to indicate communicate shutdown between threads
     exit: Arc<AtomicBool>,
@@ -806,7 +824,7 @@ pub struct Validator {
     poh_recorder: Arc<RwLock<PohRecorder>>,
     // FIREDANCER: PoH service is owned by Firedancer.
     // poh_service: PohService,
-    // block_creation_loop: BlockCreationLoop,
+    _alpenglow_block_creation: AlpenglowBlockCreation,
     tpu: Tpu,
     tvu: Tvu,
     ip_echo_server: Option<solana_net_utils::IpEchoServer>,
@@ -1978,30 +1996,15 @@ impl Validator {
         let wait_for_vote_to_start_leader =
             !waited_for_supermajority && !config.no_wait_for_vote_to_start_leader;
 
-        // FIREDANCER: PoH service and BlockCreationLoop are owned by Firedancer.
+        // FIREDANCER: PoH service is owned by Firedancer.  So is the record
+        // pump under alpenglow, which stays on the C pack -> bank -> pohh
+        // path over tango; BlockCreationLoop keeps everything else.
         let _: PohService; /* Silence unused type warnings */
-        let _: BlockCreationLoop;
-        let _: BlockCreationLoopConfig;
-        // // Pass RecordReceiver from PohService to BlockCreationLoop when shutting down. Gives us a strong guarentee
-        // // that both block producers are not running at the same time
-        // let (record_receiver_sender, record_receiver_receiver) = bounded(1);
-        // // Sender for notifications about our leader window. We allow for a maximum of 7 leader windows in case we have
-        // // consecutive leader windows and are slow. There is an early give up if our leader window is skipped because we
-        // // are too slow, so in practice this channel should never be full.
-        let (leader_window_info_sender, _leader_window_info_receiver) = bounded(7);
 
-        // let poh_service = PohService::new(
-        //     poh_recorder.clone(),
-        //     &genesis_config.poh_config,
-        //     exit.clone(),
-        //     bank_forks.read().unwrap().root_bank().ticks_per_slot(),
-        //     config.poh_pinned_cpu_core,
-        //     config.poh_hashes_per_batch,
-        //     record_receiver,
-        //     poh_service_message_receiver,
-        //     migration_status.clone(),
-        //     record_receiver_sender,
-        // );
+        // Sender for notifications about our leader window. We allow for a maximum of 7 leader windows in case we have
+        // consecutive leader windows and are slow. There is an early give up if our leader window is skipped because we
+        // are too slow, so in practice this channel should never be full.
+        let (leader_window_info_sender, leader_window_info_receiver) = bounded(7);
 
         let replay_highest_frozen = Arc::new(ReplayHighestFrozen::default());
         let alpenglow_slot_clock = SharedAlpenglowSlotClock::default();
@@ -2016,35 +2019,72 @@ impl Validator {
             .as_ref()
             .map(|service| service.sender_cloned());
 
-        // FIREDANCER: Do not support Alpenglow; this only keeps
-        // reward_aggregates_sender's receiver alive so the BLS sigverify
-        // service does not observe a disconnected channel at construction.
-        let (reward_aggregates_sender, _reward_aggregates_receiver) = bounded(MAX_ALPENGLOW_PACKET_NUM);
-        let _ = &banking_stage_sender_for_bcl;
-        // let block_creation_loop_config = BlockCreationLoopConfig {
-        //     exit: exit.clone(),
-        //     bank_forks: bank_forks.clone(),
-        //     alpenglow_slot_clock: alpenglow_slot_clock.clone(),
-        //     bank_forks_controller: bank_forks_controller.clone(),
-        //     blockstore: blockstore.clone(),
-        //     cluster_info: cluster_info.clone(),
-        //     poh_recorder: poh_recorder.clone(),
-        //     leader_schedule_cache: leader_schedule_cache.clone(),
-        //     rpc_subscriptions: rpc_subscriptions.clone(),
-        //     banking_tracer: banking_tracer.clone(),
-        //     slot_status_notifier: slot_status_notifier.clone(),
-        //     entry_notification_sender: entry_notification_sender.clone(),
-        //     leader_window_info_receiver,
-        //     highest_parent_ready: highest_parent_ready.clone(),
-        //     replay_highest_frozen: replay_highest_frozen.clone(),
-        //     record_receiver_receiver,
-        //     optimistic_parent_receiver: optimistic_parent_receiver.clone(),
-        //     highest_finalized: highest_finalized.clone(),
-        //     banking_stage_sender: banking_stage_sender_for_bcl,
-        //     sharable_banks: bank_forks.read().unwrap().sharable_banks(),
-        // };
-        // let (block_creation_loop, reward_aggregates_sender) =
-        //     BlockCreationLoop::new(block_creation_loop_config);
+        // FIREDANCER: BlockCreationLoop is constructed unconditionally, as
+        // upstream does, because the TowerBFT to alpenglow migration needs it
+        // to be there when the cluster switches mid run.  It parks until then:
+        // start_loop blocks on the RecordReceiver handoff before it touches
+        // the poh recorder or bank forks, so under TowerBFT the leader path is
+        // still entirely Firedancer's.
+        //
+        // The channel that carries the handoff is what releases the loop, not
+        // just a handshake, and receiving it is followed immediately by
+        // enable_alpenglow() and a recorder reset.  Upstream sends it from
+        // PohService as it shuts down; here FiredancerPohShutdown does, since
+        // PohService is never started.
+        //
+        // The record channel itself carries nothing: the record pump is the C
+        // pack -> bank -> pohh path, and nothing holds its sender.  It still
+        // has to stay connected, because BlockCreationLoop maps a disconnected
+        // record channel onto ChannelDisconnected and abandons the block, so
+        // the sender is kept alive below.  The receiver starts shut down to
+        // satisfy the invariant asserted before a block opens.
+        let (bcl_record_sender, mut bcl_record_receiver) = record_channels(false);
+        bcl_record_receiver.shutdown();
+        let (record_receiver_sender, record_receiver_receiver) = bounded(1);
+
+        let block_creation_loop_config = BlockCreationLoopConfig {
+            exit: exit.clone(),
+            bank_forks: bank_forks.clone(),
+            alpenglow_slot_clock: alpenglow_slot_clock.clone(),
+            bank_forks_controller: bank_forks_controller.clone(),
+            blockstore: blockstore.clone(),
+            cluster_info: cluster_info.clone(),
+            poh_recorder: poh_recorder.clone(),
+            leader_schedule_cache: leader_schedule_cache.clone(),
+            rpc_subscriptions: rpc_subscriptions.clone(),
+            banking_tracer: banking_tracer.clone(),
+            slot_status_notifier: slot_status_notifier.clone(),
+            entry_notification_sender: entry_notification_sender.clone(),
+            leader_window_info_receiver,
+            highest_parent_ready: highest_parent_ready.clone(),
+            replay_highest_frozen: replay_highest_frozen.clone(),
+            record_receiver_receiver,
+            optimistic_parent_receiver: optimistic_parent_receiver.clone(),
+            highest_finalized: highest_finalized.clone(),
+            banking_stage_sender: banking_stage_sender_for_bcl,
+            sharable_banks: bank_forks.read().unwrap().sharable_banks(),
+        };
+        let (block_creation_loop, reward_aggregates_sender) =
+            BlockCreationLoop::new(block_creation_loop_config);
+
+        // FIREDANCER: performs the parts of PohService's shutdown that the
+        // migration depends on.  Also covers the case where alpenglow was
+        // already enabled at boot, where shutdown_poh starts set and the
+        // handoff happens immediately.
+        let firedancer_poh_shutdown = FiredancerPohShutdown::new(
+            migration_status.clone(),
+            poh_recorder.clone(),
+            record_receiver_sender.clone(),
+            bcl_record_receiver,
+            exit.clone(),
+        );
+
+        let alpenglow_block_creation = AlpenglowBlockCreation {
+            _block_creation_loop: block_creation_loop,
+            _record_sender: bcl_record_sender,
+            _record_receiver_sender: record_receiver_sender,
+            _poh_shutdown: firedancer_poh_shutdown,
+        };
 
         assert_eq!(
             blockstore.get_new_shred_signals_len(),
@@ -2088,6 +2128,14 @@ impl Validator {
         });
         // This channel backing up indicates a serious problem in votor
         let (votor_event_sender, votor_event_receiver) = bounded(1000);
+
+        // FIREDANCER: the store tile finishes leader blocks, because there is
+        // no broadcast stage here to do it.  Give it what it needs to notify
+        // votor once it has set the block id.
+        crate::replay_stage::fd_ext_leader_block_notify_init(
+            votor_event_sender.clone(),
+            migration_status.clone(),
+        );
 
         let tvu = Tvu::new(
             vote_account,
@@ -2304,7 +2352,7 @@ impl Validator {
             tvu,
             // FIREDANCER: PoH service is owned by Firedancer.
             // poh_service,
-            // block_creation_loop,
+            _alpenglow_block_creation: alpenglow_block_creation,
             poh_recorder,
             ip_echo_server,
             validator_exit: config.validator_exit.clone(),
@@ -2413,9 +2461,9 @@ impl Validator {
         // FIREDANCER: PoH service and recorder are owned by Firedancer.
         // The Firedancer PoH service never exits.
         // self.poh_service.join().expect("poh_service");
-        // self.block_creation_loop
-        //     .join()
-        //     .expect("block_creation_loop");
+        // BlockCreationLoop is deliberately not joined: the loop below never
+        // returns anyway.
+        // self._alpenglow_block_creation.join();
         loop { if false { break; } thread::sleep(Duration::from_secs(60) ) }
         drop(self.poh_recorder);
 

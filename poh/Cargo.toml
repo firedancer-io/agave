@@ -46,6 +46,8 @@ solana-pubkey = { workspace = true }
 solana-runtime = { workspace = true }
 solana-transaction = { workspace = true }
 thiserror = { workspace = true }
+# FIREDANCER: block markers are handed to the poh tile already serialized.
+wincode = { workspace = true }
 
 [dev-dependencies]
 agave-logger = { path = "../logger", features = ["agave-unstable-api"] }
