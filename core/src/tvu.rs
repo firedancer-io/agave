@@ -618,6 +618,7 @@ impl Tvu {
             snapshot_controller,
             replay_highest_frozen,
             highest_parent_ready,
+            highest_finalized: highest_finalized.clone(),
         };
 
         let voting_service = VotingService::new(

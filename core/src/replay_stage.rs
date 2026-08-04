@@ -92,6 +92,7 @@ use {
         leader_schedule_utils::first_of_consecutive_leader_slots,
         snapshot_controller::SnapshotController,
         transaction_execution::TransactionStatusSender,
+        validated_block_finalization::ValidatedBlockFinalizationCert,
         vote_sender_types::{ReplayVoteMessage, ReplayVoteSender},
     },
     solana_signer::Signer,
@@ -442,6 +443,11 @@ pub struct ReplayStageConfig {
     pub snapshot_controller: Option<Arc<SnapshotController>>,
     pub replay_highest_frozen: Arc<ReplayHighestFrozen>,
     pub highest_parent_ready: Arc<RwLock<(Slot, Block)>>,
+    /// FIREDANCER: written by votor's consensus pool, read here only to
+    /// drive the gui.  Under alpenglow the three plugin messages the gui
+    /// used for slot progress are all produced by TowerBFT paths that no
+    /// longer run, so replay publishes a consensus summary instead.
+    pub highest_finalized: Arc<RwLock<Option<ValidatedBlockFinalizationCert>>>,
 }
 
 pub struct ReplaySenders {
@@ -874,6 +880,7 @@ impl ReplayStage {
             snapshot_controller,
             replay_highest_frozen,
             highest_parent_ready,
+            highest_finalized,
         } = config;
 
         let ReplaySenders {
@@ -996,6 +1003,11 @@ impl ReplayStage {
             // keep a free list to avoid doing one of those for each slot
             let mut async_verification_freelist = Vec::new();
             let mut pending_switch = None;
+            // FIREDANCER: last values published to the gui, so the
+            // consensus summary only goes out when something moved.
+            let mut published_root = u64::MAX;
+            let mut published_finalized = u64::MAX;
+            let mut published_reset = u64::MAX;
             let working_bank = {
                 let r_bank_forks = bank_forks.read().unwrap();
                 r_bank_forks.working_bank()
@@ -1232,6 +1244,19 @@ impl ReplayStage {
                     // Banks might have been switched above, these maps are no longer accurate
                     drop(ancestors);
                     drop(descendants);
+
+                    // FIREDANCER: feed the gui.  SLOT_ROOTED, SLOT_RESET and
+                    // SLOT_OPTIMISTICALLY_CONFIRMED are all published from
+                    // TowerBFT paths that do not run here, so slot progress
+                    // would otherwise stop at COMPLETED.
+                    Self::publish_alpenglow_consensus_update(
+                        bank_forks.as_ref(),
+                        highest_finalized.as_ref(),
+                        *replay_highest_frozen.highest_frozen_slot.lock().unwrap(),
+                        &mut published_root,
+                        &mut published_finalized,
+                        &mut published_reset,
+                    );
                 } else {
                     let forks_root = bank_forks.read().unwrap().root();
                     // Process cluster-agreed versions of duplicate slots for which we potentially
@@ -1800,6 +1825,136 @@ impl ReplayStage {
                 *l_highest_frozen = *highest;
                 replay_highest_frozen.freeze_notification.notify_one();
             }
+        }
+    }
+
+    /// FIREDANCER: publish a consensus summary for the gui.
+    ///
+    /// Under alpenglow the gui's three slot-progress feeds are all dead:
+    /// SLOT_ROOTED comes from `handle_votable_bank`, SLOT_RESET from the
+    /// TowerBFT reset-bank path, and SLOT_OPTIMISTICALLY_CONFIRMED from the
+    /// gossip vote listener. This replaces them with one message, shaped as
+    /// the gui-relevant subset of Firedancer's `fd_tower_slot_done_t` so the
+    /// same handler can be reused once its consensus side learns alpenglow.
+    ///
+    /// Observable state is polled rather than hooked, which keeps every
+    /// `votor` crate file untouched -- the FD patch stack modifies none of
+    /// them today, and that is what keeps rebases cheap.
+    ///
+    /// `active_fork_cnt` and `is_voting` are left unknown; the gui skips
+    /// u64::MAX.
+    fn publish_alpenglow_consensus_update(
+        bank_forks: &RwLock<BankForks>,
+        highest_finalized: &RwLock<Option<ValidatedBlockFinalizationCert>>,
+        highest_frozen_slot: Slot,
+        published_root: &mut Slot,
+        published_finalized: &mut Slot,
+        published_reset: &mut Slot,
+    ) {
+        // Must match FD_PLUGIN_CONSENSUS_UPDATE_* in fd_plugin.h.
+        const HDR_SZ: usize = 152;
+        const FD_PLUGIN_CONSENSUS_UPDATE_PARENTS_MAX: usize = 4000;
+
+        let (finalized_slot, finalized_block_id, finalized_fast) =
+            match highest_finalized.read().unwrap().as_ref() {
+                Some(cert) => {
+                    let block = cert.block();
+                    (block.slot, block.block_id, u64::from(cert.is_fast()))
+                }
+                None => (u64::MAX, Hash::default(), 0u64),
+            };
+
+        // One lock: the root and the block id have to describe the same
+        // bank forks, and this runs on every pass of the replay loop.
+        let (root, root_block_id, ancestors) = {
+            let bank_forks_r = bank_forks.read().unwrap();
+            let root = bank_forks_r.root();
+            if root == *published_root
+                && finalized_slot == *published_finalized
+                && highest_frozen_slot == *published_reset
+            {
+                return; // nothing moved
+            }
+            let root_block_id = bank_forks_r
+                .get(root)
+                .and_then(|bank| bank.block_id())
+                .unwrap_or_default();
+            // Ancestors of the fork head, highest first, exactly as the
+            // TowerBFT path takes them from the reset bank.  Truncated
+            // rather than asserted: a short chain only shortens the skip
+            // walk, whereas a message over the link mtu is lost outright.
+            let ancestors: Vec<Slot> = bank_forks_r
+                .get(highest_frozen_slot)
+                .map(|bank| {
+                    bank.parents()
+                        .iter()
+                        .take(FD_PLUGIN_CONSENSUS_UPDATE_PARENTS_MAX)
+                        .map(|p| p.slot())
+                        .collect()
+                })
+                .unwrap_or_default();
+            (root, root_block_id, ancestors)
+        };
+        *published_root = root;
+        *published_finalized = finalized_slot;
+        *published_reset = highest_frozen_slot;
+
+        // The head of the fork being built on.  Under alpenglow this is
+        // the highest slot replay has frozen; there is no reset bank,
+        // because the path that produced one does not run.
+        let reset_slot = highest_frozen_slot;
+
+        // The last slot we voted for.  Vote transactions do not land in
+        // banks under alpenglow, so `my_latest_landed_vote` -- what the
+        // TowerBFT path used -- is always stale here.  The root is a true
+        // lower bound instead: it only advances through blocks where
+        // `vote_history.voted(slot)` held, so the distance from the fork
+        // head is the honest "how current is our voting" the gui wants,
+        // and it grows the moment we stop voting.
+        let vote_slot = root;
+
+        // Field order must match fd_plugin_msg_consensus_update_t in
+        // src/discoh/plugin/fd_plugin.h. Written flat, no padding, then
+        // the parent chain: parent_cnt, then the head followed by its
+        // ancestors, which is the shape the gui's skip walk expects.
+        let mut memory = vec![0u8; HDR_SZ + 8 + (1 + ancestors.len()) * 8];
+        memory[0..8].copy_from_slice(&reset_slot.to_le_bytes());
+        memory[8..16].copy_from_slice(&vote_slot.to_le_bytes());
+        memory[16..24].copy_from_slice(&root.to_le_bytes());
+        memory[24..32].copy_from_slice(&finalized_slot.to_le_bytes());
+        memory[32..40].copy_from_slice(&finalized_fast.to_le_bytes());
+        memory[40..48].copy_from_slice(&u64::MAX.to_le_bytes()); // active_fork_cnt
+        memory[48..56].copy_from_slice(&u64::MAX.to_le_bytes()); // is_voting
+        // reset_block_id stays zero: the gui does not read it yet
+        memory[88..120].copy_from_slice(root_block_id.as_ref());
+        memory[120..152].copy_from_slice(finalized_block_id.as_ref());
+
+        // parent_cnt is the walk's BUDGET, not a length.  fd_guih_update_slot_progress
+        // stops once it has matched that many entries of `parents`, and `parents` holds
+        // 1 + ancestors.len() of them because the head sits at parents[0].
+        //
+        // The legacy reset-slot producer sends ancestors.len() here, so its walk always
+        // stops one entry short.  That is invisible under TowerBFT: the root lags ~32
+        // slots, the chain is long, and the entry lost is the oldest one, far below
+        // anything the walk still cares about.  Under alpenglow it is fatal.  A
+        // finalization certificate lands 1-2 slots behind the head, bank_forks is pruned
+        // to the root, and `bank.parents()` is therefore typically a single bank -- so
+        // `parents` is just [head, root].  Stopping one entry early means stopping on the
+        // head itself, and the walk never crosses the gap where a skipped window sits.
+        // Skipped slots then stay unmarked and the skip rate reads zero forever.
+        let parent_cnt = 1 + ancestors.len();
+        memory[HDR_SZ..HDR_SZ + 8].copy_from_slice(&parent_cnt.to_le_bytes());
+        memory[HDR_SZ + 8..HDR_SZ + 16].copy_from_slice(&reset_slot.to_le_bytes());
+        for (i, slot) in ancestors.iter().enumerate() {
+            let at = HDR_SZ + 16 + i * 8;
+            memory[at..at + 8].copy_from_slice(&slot.to_le_bytes());
+        }
+
+        unsafe extern "C" {
+            fn fd_ext_plugin_publish_replay_stage(kind: u8, data: *const u8, len: u64);
+        }
+        unsafe {
+            fd_ext_plugin_publish_replay_stage(14, memory.as_ptr(), memory.len() as u64);
         }
     }
 
