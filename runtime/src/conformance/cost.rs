@@ -24,7 +24,7 @@ use {
 
 fn runtime_transaction_from_proto(
     proto_tx: &ProtoSanitizedTransaction,
-) -> Option<RuntimeTransaction<SanitizedTransaction>> {
+) -> RuntimeTransaction<SanitizedTransaction> {
     let proto_message = proto_tx
         .message
         .as_ref()
@@ -49,9 +49,10 @@ fn runtime_transaction_from_proto(
 
     let serialized_size =
         bincode::serialized_size(&versioned_tx).expect("failed to compute serialized size");
-    if serialized_size > PACKET_DATA_SIZE as u64 {
-        return None;
-    }
+    assert!(
+        serialized_size <= PACKET_DATA_SIZE as u64,
+        "transaction exceeds max packet size",
+    );
 
     // Dummy loaded addresses, one per ALUT index. Cost tracking only
     // tracks counts, so dummy pubkeys are fine.
@@ -77,16 +78,14 @@ fn runtime_transaction_from_proto(
             .collect(),
     };
 
-    Some(
-        RuntimeTransaction::try_create(
-            versioned_tx,
-            MessageHash::Compute,
-            None,
-            SimpleAddressLoader::Enabled(loaded_addresses),
-            &std::collections::HashSet::new(),
-        )
-        .expect("failed to create RuntimeTransaction"),
+    RuntimeTransaction::try_create(
+        versioned_tx,
+        MessageHash::Compute,
+        None,
+        SimpleAddressLoader::Enabled(loaded_addresses),
+        &std::collections::HashSet::new(),
     )
+    .expect("failed to create RuntimeTransaction")
 }
 
 fn cost_result_to_proto<Tx>(cost: &TransactionCost<'_, Tx>) -> ProtoCostResult
@@ -105,12 +104,12 @@ where
     }
 }
 
-pub fn execute_cost(input: &ProtoCostContext) -> Option<ProtoCostResult> {
+pub fn execute_cost(input: &ProtoCostContext) -> ProtoCostResult {
     let proto_tx = input
         .tx
         .as_ref()
         .expect("ProtoCostContext missing transaction");
-    let runtime_tx = runtime_transaction_from_proto(proto_tx)?;
+    let runtime_tx = runtime_transaction_from_proto(proto_tx);
 
     let feature_set = input
         .features
@@ -129,7 +128,7 @@ pub fn execute_cost(input: &ProtoCostContext) -> Option<ProtoCostResult> {
         CostModel::calculate_cost(&runtime_tx, &feature_set)
     };
 
-    Some(cost_result_to_proto(&cost))
+    cost_result_to_proto(&cost)
 }
 
 /// # Safety
@@ -165,9 +164,7 @@ pub unsafe extern "C" fn sol_compat_txn_cost_v1(
         return 0;
     };
 
-    let Some(cost_result) = execute_cost(&cost_context) else {
-        return 0;
-    };
+    let cost_result = execute_cost(&cost_context);
 
     let out_vec = cost_result.encode_to_vec();
     let out_cap = unsafe { *out_psz } as usize;
@@ -294,7 +291,7 @@ mod tests {
     }
 
     fn assert_has_cost(ctx: &ProtoCostContext) -> ProtoCostResult {
-        let result = execute_cost(ctx).expect("expected a cost result");
+        let result = execute_cost(ctx);
         assert!(result.has_cost, "expected has_cost to be true");
         result
     }
@@ -371,11 +368,12 @@ mod tests {
             actual_programs_execution_cost: 0,
             actual_loaded_accounts_data_size_bytes: 0,
         };
-        let _ = execute_cost(&ctx);
+        execute_cost(&ctx);
     }
 
     #[test]
-    fn test_oversized_transaction_is_rejected() {
+    #[should_panic(expected = "transaction exceeds max packet size")]
+    fn test_oversized_transaction_panics() {
         let msg = ProtoTransactionMessage {
             is_legacy: true,
             header: Some(ProtoMessageHeader {
@@ -398,6 +396,6 @@ mod tests {
             signatures: vec![vec![0; 64]],
         };
         let ctx = estimate_context(tx);
-        assert!(execute_cost(&ctx).is_none());
+        execute_cost(&ctx);
     }
 }
