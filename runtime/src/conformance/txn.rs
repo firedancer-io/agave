@@ -63,9 +63,8 @@ use {
     solana_runtime_transaction::transaction_with_meta::TransactionWithMeta,
     solana_signature::Signature,
     solana_svm::conformance::{
-        account_state::account_to_proto_hashed,
-        direct_mapping::direct_mapping_handle_cu_exhaustion, err::serialized_error_code,
-        fd_hash::fd_hash_or_zero, feature_set::feature_set_from_proto,
+        account_state::account_to_proto, direct_mapping::direct_mapping_handle_cu_exhaustion,
+        err::serialized_error_code, fd_hash::fd_hash_or_zero, feature_set::feature_set_from_proto,
         versioned_transaction::versioned_transaction_from_proto,
     },
     solana_svm::transaction_processing_result::{
@@ -321,13 +320,13 @@ fn executed_transaction_effects(
         .iter()
         .enumerate()
         .filter(|(index, _)| sanitized_message.is_writable(*index))
-        .map(|(_, (pubkey, account))| account_to_proto_hashed((*pubkey, account.clone().into())))
+        .map(|(_, (pubkey, account))| account_to_proto((*pubkey, account.clone().into())))
         .collect();
     let rollback_accounts = if executed_tx.execution_details.status.is_err() {
         loaded
             .rollback_accounts
             .iter()
-            .map(|(pubkey, account)| account_to_proto_hashed((*pubkey, account.clone().into())))
+            .map(|(pubkey, account)| account_to_proto((*pubkey, account.clone().into())))
             .collect()
     } else {
         vec![]
@@ -353,7 +352,7 @@ fn fees_only_transaction_effects(tx: &FeesOnlyTransaction) -> ProtoTxnEffects {
         rollback_accounts: tx
             .rollback_accounts
             .iter()
-            .map(|(pubkey, account)| account_to_proto_hashed((*pubkey, account.clone().into())))
+            .map(|(pubkey, account)| account_to_proto((*pubkey, account.clone().into())))
             .collect(),
         return_data: vec![],
     }

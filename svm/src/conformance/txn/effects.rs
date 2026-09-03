@@ -3,8 +3,7 @@
 #[cfg(feature = "conformance")]
 use {
     crate::conformance::{
-        account_state::account_to_proto_hashed, err::serialized_error_code,
-        fd_hash::fd_hash_or_zero,
+        account_state::account_to_proto, err::serialized_error_code, fd_hash::fd_hash_or_zero,
     },
     protosol::protos::{FeeDetails as ProtoFeeDetails, TxnResult as ProtoTxnResult},
     solana_instruction::error::InstructionError,
@@ -96,7 +95,7 @@ impl From<TxnEffects> for ProtoTxnResult {
         let modified_accounts = value
             .resulting_accounts
             .into_iter()
-            .map(|(pubkey, account)| account_to_proto_hashed((pubkey, account)))
+            .map(|(pubkey, account)| account_to_proto((pubkey, account)))
             .collect();
 
         Self {
