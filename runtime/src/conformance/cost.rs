@@ -52,7 +52,7 @@ fn runtime_transaction_from_proto(
         _ => PACKET_DATA_SIZE,
     } as u64;
     let serialized_size =
-        bincode::serialized_size(&versioned_tx).expect("failed to compute serialized size");
+        wincode::serialized_size(&versioned_tx).expect("failed to compute serialized size");
     assert!(
         serialized_size <= max_size,
         "transaction exceeds max packet size",
