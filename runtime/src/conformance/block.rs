@@ -406,7 +406,7 @@ fn validate_transaction_message(message: &protos::TransactionMessage) {
     if !message.recent_blockhash.is_empty() {
         let _: [u8; 32] = message.recent_blockhash.as_slice().try_into().unwrap();
     }
-    if !message.is_legacy {
+    if message.version() != protos::TransactionVersion::Legacy {
         for lookup in &message.address_table_lookups {
             let _: [u8; 32] = lookup.account_key.as_slice().try_into().unwrap();
         }
@@ -966,7 +966,7 @@ mod tests {
 
         ProtoSanitizedTransaction {
             message: Some(ProtoTransactionMessage {
-                is_legacy: true,
+                version: protosol::protos::TransactionVersion::Legacy as i32,
                 header: Some(ProtoMessageHeader {
                     num_required_signatures: 1,
                     num_readonly_signed_accounts: 0,
@@ -984,6 +984,7 @@ mod tests {
                     data: instruction_data,
                 }],
                 address_table_lookups: Vec::new(),
+                v1_config: None,
             }),
             message_hash: Vec::new(),
             signatures: vec![vec![0x99; 64]],
@@ -1154,7 +1155,7 @@ mod tests {
     fn malformed_transaction_message_lookup_key_panics() {
         let mut context = transfer_context(1);
         let message = context.txns[0].message.as_mut().unwrap();
-        message.is_legacy = false;
+        message.set_version(protosol::protos::TransactionVersion::V0);
         message
             .address_table_lookups
             .push(ProtoMessageAddressTableLookup {
