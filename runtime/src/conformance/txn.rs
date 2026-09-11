@@ -971,6 +971,102 @@ mod tests {
         );
     }
 
+    fn v1_simple_transfer(
+        cu_limit: Option<u32>,
+    ) -> (
+        Vec<(Pubkey, AccountSharedData)>,
+        BlockhashQueue,
+        VersionedTransaction,
+        Pubkey,
+        Pubkey,
+    ) {
+        let [(program_id, program), (program_data_id, program_data)] =
+            deploy_program("simple-transfer");
+        let fee_payer = Pubkey::new_unique();
+        let sender = Pubkey::new_unique();
+        let recipient = Pubkey::new_unique();
+        let (blockhash_queue, recent_blockhash) = blockhash_queue();
+        let message = VersionedMessage::V1(solana_message::v1::Message {
+            header: MessageHeader {
+                num_required_signatures: 2,
+                num_readonly_signed_accounts: 0,
+                num_readonly_unsigned_accounts: 1,
+            },
+            // An absent compute-unit or loaded-data limit means 0 in V1.
+            config: solana_message::v1::TransactionConfig {
+                priority_fee: None,
+                compute_unit_limit: cu_limit,
+                loaded_accounts_data_size_limit: Some(64 * 1024 * 1024),
+                heap_size: None,
+            },
+            lifetime_specifier: recent_blockhash,
+            account_keys: vec![fee_payer, sender, recipient, program_id, Pubkey::default()],
+            instructions: vec![CompiledInstruction {
+                program_id_index: 3,
+                accounts: vec![1, 2, 4],
+                data: vec![0, 0, 0, 0, 0, 0, 0, 10],
+            }],
+        });
+        let transaction = VersionedTransaction {
+            signatures: vec![Signature::default(), Signature::default()],
+            message,
+        };
+        let accounts = vec![
+            (fee_payer, empty_account(10000000)),
+            (recipient, empty_account(900000)),
+            (sender, empty_account(900000)),
+            (program_id, program),
+            (program_data_id, program_data),
+            system_program_account(),
+            clock_sysvar_account(),
+            epoch_schedule_sysvar_account(),
+            rent_sysvar_account(),
+            slot_hashes_sysvar_account(),
+        ];
+        (accounts, blockhash_queue, transaction, sender, recipient)
+    }
+
+    #[test]
+    fn test_v1_transfer_executes_when_feature_enabled() {
+        let (accounts, blockhash_queue, transaction, sender, recipient) =
+            v1_simple_transfer(Some(200_000));
+        let execution = execute_txn(
+            &accounts,
+            feature_set(),
+            blockhash_queue,
+            fee_rate_governor(),
+            0,
+            transaction,
+        );
+        assert_executed_ok(&execution);
+        assert_eq!(writable_account_lamports(&execution, &sender), Some(899990));
+        assert_eq!(
+            writable_account_lamports(&execution, &recipient),
+            Some(900010)
+        );
+    }
+
+    #[test]
+    fn test_v1_rejected_when_feature_disabled() {
+        let (accounts, blockhash_queue, transaction, _, _) = v1_simple_transfer(Some(200_000));
+        let mut features = feature_set();
+        features.deactivate(&agave_feature_set::enable_tx_v1::id());
+        let execution = execute_txn(
+            &accounts,
+            features,
+            blockhash_queue,
+            fee_rate_governor(),
+            0,
+            transaction,
+        );
+        assert!(matches!(
+            execution,
+            BankTxnProcessingResult::FailedVerification(
+                solana_transaction_error::TransactionError::UnsupportedVersion
+            )
+        ));
+    }
+
     #[test]
     fn test_lookup_table() {
         let [(program_id, program), (program_data_id, program_data)] =
