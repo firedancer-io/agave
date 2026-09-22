@@ -764,7 +764,7 @@ impl Stakes<StakeAccount> {
     /// elements.
     ///
     /// [hamt]: https://en.wikipedia.org/wiki/Hash_array_mapped_trie
-    pub(crate) fn stake_delegations_vec(&self) -> Vec<(&Pubkey, &StakeAccount)> {
+    pub fn stake_delegations_vec(&self) -> Vec<(&Pubkey, &StakeAccount)> {
         self.stake_delegations.iter().collect()
     }
 
