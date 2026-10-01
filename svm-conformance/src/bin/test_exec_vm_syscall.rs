@@ -23,10 +23,7 @@ fn exec(input: &PathBuf) -> bool {
         return false;
     };
 
-    let Some(effects) = solana_svm_conformance::syscall::execute_vm_syscall(context) else {
-        println!("Unsupported SBPF version.");
-        return false;
-    };
+    let effects = solana_svm_conformance::syscall::execute_vm_syscall(context);
 
     let ok = effects == expected;
     if ok {

@@ -45,9 +45,7 @@ const STACK_SIZE: usize = 64 * STACK_GAP_SIZE as usize;
 /// fuzzer inputs run on either implementation.
 const HEAP_MAX: usize = 256 * 1024;
 
-/// Returns `None` for an SBPF version the harness does not support, so
-/// the FFI rejects the input the same way Firedancer does.
-pub fn execute_vm_syscall(input: ProtoSyscallContext) -> Option<ProtoSyscallEffects> {
+pub fn execute_vm_syscall(input: ProtoSyscallContext) -> ProtoSyscallEffects {
     let instr_context = InstrContext::from(input.instr_ctx.expect("missing instr context"));
     let mut vm_context = input.vm_ctx.expect("missing vm context");
     let syscall_invocation = input.syscall_invocation.unwrap_or_default();
@@ -57,7 +55,7 @@ pub fn execute_vm_syscall(input: ProtoSyscallContext) -> Option<ProtoSyscallEffe
         1 => SBPFVersion::V1,
         2 => SBPFVersion::V2,
         3 => SBPFVersion::V3,
-        _ => return None,
+        v => panic!("unsupported sbpf_version {v}"),
     };
 
     let feature_set = instr_context.feature_set;
@@ -208,7 +206,7 @@ pub fn execute_vm_syscall(input: ProtoSyscallContext) -> Option<ProtoSyscallEffe
         r0,
     } = unpack_stable_result(program_result);
 
-    Some(ProtoSyscallEffects {
+    ProtoSyscallEffects {
         error,
         error_kind,
         r0,
@@ -220,7 +218,7 @@ pub fn execute_vm_syscall(input: ProtoSyscallContext) -> Option<ProtoSyscallEffe
         rodata_hash: fd_hash_or_zero(rodata.as_slice()),
         pc: 0,
         ..Default::default()
-    })
+    }
 }
 
 fn get_registers(vm_context: &ProtoVmContext) -> [u64; 12] {
@@ -368,9 +366,7 @@ pub unsafe extern "C" fn sol_compat_vm_syscall_execute_v1(
         return 0;
     };
 
-    let Some(syscall_effects) = execute_vm_syscall(syscall_context) else {
-        return 0;
-    };
+    let syscall_effects = execute_vm_syscall(syscall_context);
     let out_slice = unsafe { std::slice::from_raw_parts_mut(out_ptr, (*out_psz) as usize) };
     let out_vec = syscall_effects.encode_to_vec();
     if out_vec.len() > out_slice.len() {
@@ -456,8 +452,7 @@ mod tests {
             0,
             0,
             msg.to_vec(),
-        ))
-        .unwrap();
+        ));
 
         assert_eq!(effects.error, 0);
         // Logs are no longer collected (the harness runs without a log
@@ -474,8 +469,7 @@ mod tests {
             8,             // r3: count
             0,
             vec![0u8; 16],
-        ))
-        .unwrap();
+        ));
 
         assert_eq!(effects.error, 0);
         // Effects carry only a hash, so rebuild the heap image the syscall
@@ -494,8 +488,7 @@ mod tests {
             10,            // r3: line
             5,             // r4: column
             b"x".to_vec(),
-        ))
-        .unwrap();
+        ));
 
         assert_ne!(effects.error, 0);
     }
