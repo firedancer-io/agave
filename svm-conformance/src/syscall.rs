@@ -13,7 +13,10 @@ use {
         memory_context::MemoryContext,
         solana_sbpf::{
             aligned_memory::AlignedMemory,
-            ebpf::{HOST_ALIGN, MM_BYTECODE_START, MM_HEAP_START, MM_INPUT_START, MM_STACK_START},
+            ebpf::{
+                HOST_ALIGN, MM_BYTECODE_START, MM_HEAP_START, MM_INPUT_START, MM_RODATA_START,
+                MM_STACK_START,
+            },
             error::{EbpfError, ProgramResult, StableResult},
             memory_region::{AccessViolationHandler, MemoryMapping, MemoryRegion},
             program::{BuiltinProgram, SBPFVersion},
@@ -41,13 +44,21 @@ const STACK_SIZE: usize = 64 * STACK_GAP_SIZE as usize;
 /// Upper bound on `vm_context.heap_max` — matches Firedancer's cap so the same
 /// fuzzer inputs run on either implementation.
 const HEAP_MAX: usize = 256 * 1024;
-const SBPF_VERSION: SBPFVersion = SBPFVersion::V0;
 
-pub fn execute_vm_syscall(input: ProtoSyscallContext) -> ProtoSyscallEffects {
+/// Returns `None` for an SBPF version the harness does not support, so
+/// the FFI rejects the input the same way Firedancer does.
+pub fn execute_vm_syscall(input: ProtoSyscallContext) -> Option<ProtoSyscallEffects> {
     let instr_context = InstrContext::from(input.instr_ctx.expect("missing instr context"));
     let mut vm_context = input.vm_ctx.expect("missing vm context");
     let syscall_invocation = input.syscall_invocation.unwrap_or_default();
     let registers = get_registers(&vm_context);
+    let sbpf_version = match vm_context.sbpf_version {
+        0 => SBPFVersion::V0,
+        1 => SBPFVersion::V1,
+        2 => SBPFVersion::V2,
+        3 => SBPFVersion::V3,
+        _ => return None,
+    };
 
     let feature_set = instr_context.feature_set;
     let virtual_address_space_adjustments = feature_set.virtual_address_space_adjustments;
@@ -139,6 +150,7 @@ pub fn execute_vm_syscall(input: ProtoSyscallContext) -> ProtoSyscallEffects {
             &mut heap,
             input_memory_regions,
             &config,
+            sbpf_version,
             access_violation_handler,
         )
     };
@@ -166,7 +178,7 @@ pub fn execute_vm_syscall(input: ProtoSyscallContext) -> ProtoSyscallEffects {
         let invoke_context_static: &mut InvokeContext<'static, 'static> =
             unsafe { std::mem::transmute(&mut invoke_context) };
 
-        let mut vm = EbpfVm::new(loader, SBPF_VERSION, invoke_context_static, STACK_SIZE);
+        let mut vm = EbpfVm::new(loader, sbpf_version, invoke_context_static, STACK_SIZE);
         vm.registers = registers;
 
         vm.invoke_function(syscall_function);
@@ -196,7 +208,7 @@ pub fn execute_vm_syscall(input: ProtoSyscallContext) -> ProtoSyscallEffects {
         r0,
     } = unpack_stable_result(program_result);
 
-    ProtoSyscallEffects {
+    Some(ProtoSyscallEffects {
         error,
         error_kind,
         r0,
@@ -208,7 +220,7 @@ pub fn execute_vm_syscall(input: ProtoSyscallContext) -> ProtoSyscallEffects {
         rodata_hash: fd_hash_or_zero(rodata.as_slice()),
         pc: 0,
         ..Default::default()
-    }
+    })
 }
 
 fn get_registers(vm_context: &ProtoVmContext) -> [u64; 12] {
@@ -265,15 +277,22 @@ unsafe fn create_memory_mapping(
     heap: &mut AlignedMemory<HOST_ALIGN>,
     input_memory_regions: Vec<MemoryRegion>,
     config: &Config,
+    sbpf_version: SBPFVersion,
     acces_violation_handler: AccessViolationHandler,
 ) -> MemoryMapping {
-    let stack_frame_gap = if SBPF_VERSION.stack_frame_gaps() && config.enable_stack_frame_gaps {
+    let stack_frame_gap = if sbpf_version.stack_frame_gaps() && config.enable_stack_frame_gaps {
         config.stack_frame_size as u64
     } else {
         0
     };
+    // V3 maps rodata at vaddr 0, earlier versions at 0x100000000.
+    let rodata_start = if sbpf_version.enable_lower_rodata_vaddr() {
+        MM_RODATA_START
+    } else {
+        MM_BYTECODE_START
+    };
     let regions = [
-        MemoryRegion::new(rodata.as_slice() as *const [u8], MM_BYTECODE_START),
+        MemoryRegion::new(rodata.as_slice() as *const [u8], rodata_start),
         MemoryRegion::new_gapped(
             stack.as_slice_mut() as *mut [u8],
             MM_STACK_START,
@@ -288,7 +307,7 @@ unsafe fn create_memory_mapping(
         MemoryMapping::new_with_access_violation_handler(
             regions,
             config,
-            SBPF_VERSION,
+            sbpf_version,
             acces_violation_handler,
         )
         .expect("failed to create memory mapping")
@@ -349,7 +368,9 @@ pub unsafe extern "C" fn sol_compat_vm_syscall_execute_v1(
         return 0;
     };
 
-    let syscall_effects = execute_vm_syscall(syscall_context);
+    let Some(syscall_effects) = execute_vm_syscall(syscall_context) else {
+        return 0;
+    };
     let out_slice = unsafe { std::slice::from_raw_parts_mut(out_ptr, (*out_psz) as usize) };
     let out_vec = syscall_effects.encode_to_vec();
     if out_vec.len() > out_slice.len() {
@@ -435,7 +456,8 @@ mod tests {
             0,
             0,
             msg.to_vec(),
-        ));
+        ))
+        .unwrap();
 
         assert_eq!(effects.error, 0);
         // Logs are no longer collected (the harness runs without a log
@@ -452,7 +474,8 @@ mod tests {
             8,             // r3: count
             0,
             vec![0u8; 16],
-        ));
+        ))
+        .unwrap();
 
         assert_eq!(effects.error, 0);
         // Effects carry only a hash, so rebuild the heap image the syscall
@@ -471,7 +494,8 @@ mod tests {
             10,            // r3: line
             5,             // r4: column
             b"x".to_vec(),
-        ));
+        ))
+        .unwrap();
 
         assert_ne!(effects.error, 0);
     }
