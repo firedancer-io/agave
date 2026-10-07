@@ -498,6 +498,8 @@ fn synthesize_vote_account(pva: &ProtoPrevVoteAccount) -> (Pubkey, u64, VoteAcco
         protos::VoteAccountVersion::V4 => VoteStateVersions::new_v4(VoteStateV4 {
             node_pubkey: node_pk,
             inflation_rewards_commission_bps: pva.commission_bps as u16,
+            block_revenue_commission_bps: pva.block_revenue_commission_bps as u16,
+            pending_delegator_rewards: pva.pending_delegator_rewards,
             epoch_credits,
             inflation_rewards_collector,
             block_revenue_collector,
