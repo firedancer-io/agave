@@ -7,6 +7,7 @@
 
 use {
     agave_feature_set::FeatureSet,
+    agave_transaction_view::transaction_version::TransactionVersion,
     agave_votor_messages::migration::MigrationStatus,
     prost::Message,
     protosol::protos::{BlockParseResult, FecSetParseResult, ShredParseContext, ShredParseEffects},
@@ -211,9 +212,14 @@ pub fn execute_shred_parse(ctx: &ShredParseContext) -> ShredParseEffects {
             continue;
         }
         // Mirror FD's fd_sched_parse_txn: reject non-sanitizable, duplicate-account, or over-MTU txns.
+        // The MTU depends on the transaction version, as in `Bank::verify_transaction`.
         let sanitize_config = sanitize_config();
         for tx in entries.iter().flat_map(|entry| &entry.transactions) {
-            let oversized = tx.data().len() > PACKET_DATA_SIZE;
+            let max_transaction_size = match tx.version() {
+                TransactionVersion::V1 => solana_message::v1::MAX_TRANSACTION_SIZE,
+                _ => PACKET_DATA_SIZE,
+            };
+            let oversized = tx.data().len() > max_transaction_size;
             let bad_locks = validate_account_locks(
                 AccountKeys::new(tx.static_account_keys(), None),
                 MAX_TX_ACCOUNT_LOCKS,
