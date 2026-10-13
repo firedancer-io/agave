@@ -1,4 +1,6 @@
 //! Defines ConsensusPool to store received and generated votes and certificates.
+#[cfg(feature = "dev-context-only-utils")]
+use qualifier_attr::qualifiers;
 use {
     crate::{
         aggregate_accumulator::AggregateAccumulatorError,
@@ -39,6 +41,7 @@ mod vote_pool;
 
 /// Different failure cases from calling `add_vote()`.
 #[derive(Debug, Error, PartialEq)]
+#[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
 pub(crate) enum AddVoteError {
     #[error("In root_slot:{root_slot} could not find epoch stakes for slot:{slot}")]
     EpochStakesNotFound { root_slot: Slot, slot: Slot },
@@ -61,6 +64,7 @@ fn get_rank_map(bank: &Bank, slot: Slot) -> Result<&BLSPubkeyToRankMap, AddVoteE
 /// Container to store received votes and certificates.
 ///
 /// Based on received votes and certificates, generates new `VotorEvent`s and generates new certificates.
+#[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
 pub(crate) struct ConsensusPool {
     cluster_info: Arc<ClusterInfo>,
     // Vote pools to do bean counting for votes.
@@ -93,6 +97,7 @@ pub(crate) struct ConsensusPool {
 }
 
 impl ConsensusPool {
+    #[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
     pub(crate) fn new(
         cluster_info: Arc<ClusterInfo>,
         root: &Bank,
@@ -250,6 +255,7 @@ impl ConsensusPool {
     ///
     /// If this resulted in a new highest Finalize or FastFinalize certificate,
     /// return the slot
+    #[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
     pub(crate) fn add_pool_msg(
         &mut self,
         root_bank: &Bank,
@@ -399,6 +405,13 @@ impl ConsensusPool {
     }
 
     /// Get the highest finalized slot (slow or fast)
+    /// The certificates the pool holds, formed or received.
+    #[cfg(feature = "dev-context-only-utils")]
+    pub fn completed_certificates(&self) -> impl Iterator<Item = &Certificate> {
+        self.completed_certificates.values().map(|cert| cert.as_ref())
+    }
+
+    #[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
     pub(crate) fn highest_finalized_slot(&self) -> Option<FinalizedSlot> {
         self.highest_finalized_slot_cert.as_ref().map(|c| c.slot())
     }
@@ -462,6 +475,7 @@ impl ConsensusPool {
 
     /// Checks if a specific block has a NotarizeFallback certificate (or stronger).
     /// This is used for verifying that an intrawindow block's parent has been certified.
+    #[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
     pub(crate) fn block_has_notar_fallback_or_stronger(&self, block: Block) -> bool {
         self.parent_ready_tracker
             .has_notar_fallback_or_stronger(block)
@@ -469,11 +483,13 @@ impl ConsensusPool {
 
     /// Takes the pending safe-to-notar blocks that need parent verification.
     /// The caller is responsible for processing these blocks.
+    #[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
     pub(crate) fn take_pending_safe_to_notar(&mut self) -> Vec<Block> {
         std::mem::take(&mut self.pending_safe_to_notar)
     }
 
     /// Used by consensus_pool_service to return blocks that it failed to process.
+    #[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
     pub(crate) fn add_to_pending_safe_to_notar(&mut self, block: Block) {
         self.pending_safe_to_notar.push(block);
     }

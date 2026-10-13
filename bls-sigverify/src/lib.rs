@@ -8,4 +8,6 @@ pub mod generated_cert_types;
 pub mod rewards;
 pub mod stats;
 mod utils;
+#[cfg(feature = "dev-context-only-utils")]
+pub use errors::SigVerifyError;
 mod vote_pool;

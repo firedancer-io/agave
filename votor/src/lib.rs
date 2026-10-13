@@ -22,6 +22,9 @@ pub mod voting_service;
 pub mod voting_utils;
 pub mod votor;
 
+#[cfg(feature = "dev-context-only-utils")]
+pub use consensus_pool_service::{PoolMessage, PoolVote};
+
 #[cfg_attr(feature = "frozen-abi", macro_use)]
 #[cfg(feature = "frozen-abi")]
 extern crate solana_frozen_abi_macro;

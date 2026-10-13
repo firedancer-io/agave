@@ -7,6 +7,8 @@
 
 mod stats;
 
+#[cfg(feature = "dev-context-only-utils")]
+use qualifier_attr::qualifiers;
 use {
     crate::{
         common::{DELTA_STANDSTILL, blocking_send},
@@ -50,6 +52,7 @@ use {
     },
 };
 
+#[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
 pub(crate) enum PoolVote {
     Own(VoteMessage),
     External(VoteAggregate),
@@ -64,6 +67,7 @@ impl PoolVote {
     }
 }
 
+#[cfg_attr(feature = "dev-context-only-utils", qualifiers(pub))]
 pub(crate) enum PoolMessage {
     Votes(Vec<PoolVote>),
     Certificates(Vec<Certificate>),
