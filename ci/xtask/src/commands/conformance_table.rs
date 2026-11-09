@@ -28,7 +28,12 @@ pub struct TableEntry {
 const AGAVE: &str = "agave-conformance";
 const SVM: &str = "solana-svm-conformance";
 
-const HARNESS_DIRS: &[(&str, &str)] = &[("conformance", AGAVE), ("svm-conformance", SVM)];
+const HARNESS_DIRS: &[(&str, &str)] = &[
+    ("conformance", AGAVE),
+    ("conformance-ffi", AGAVE),
+    ("conformance-ffi", SVM),
+    ("svm-conformance", SVM),
+];
 
 /// Static fixture-set table: (fixtures_dir, anchor_crate, harness_package,
 /// harness_bin). Harnesses are `dev-bins` workspace binaries.
@@ -395,6 +400,24 @@ mod tests {
         assert_eq!(
             fixture_dirs(&entries),
             vec!["instr", "elf_loader", "syscall", "vm_serialization"]
+        );
+
+        let changed = changed_harnesses(&["conformance-ffi/src/lib.rs".to_string()]);
+        assert_eq!(changed, [AGAVE, SVM].into());
+        let entries = select_entries(&HashSet::new(), &changed, &HashMap::new());
+        assert_eq!(
+            fixture_dirs(&entries),
+            vec![
+                "instr",
+                "txn",
+                "block",
+                "elf_loader",
+                "syscall",
+                "vm_serialization",
+                "cost",
+                "shred",
+                "gossip"
+            ]
         );
     }
 

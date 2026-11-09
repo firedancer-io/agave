@@ -112,6 +112,7 @@ dependencies = [
 name = "agave-conformance"
 version = "4.5.0-beta.0"
 dependencies = [
+ "agave-conformance-ffi",
  "agave-feature-set",
  "agave-transaction-view",
  "agave-votor-messages",
@@ -166,6 +167,13 @@ dependencies = [
  "solana-vote-interface",
  "solana-vote-program",
  "wincode",
+]
+
+[[package]]
+name = "agave-conformance-ffi"
+version = "4.5.0-beta.0"
+dependencies = [
+ "agave-logger",
 ]
 
 [[package]]
@@ -8703,6 +8711,7 @@ dependencies = [
 name = "solana-svm-conformance"
 version = "4.5.0-beta.0"
 dependencies = [
+ "agave-conformance-ffi",
  "agave-feature-set",
  "agave-precompiles",
  "clap 4.6.1",

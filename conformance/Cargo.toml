@@ -48,9 +48,16 @@ agave-unstable-api = []
 cli = ["dep:clap"]
 dev-context-only-utils = []
 dummy-for-ci-check = ["ffi"]
-ffi = ["dep:prost", "dep:protosol", "agave-unstable-api", "solana-svm/conformance"]
+ffi = [
+    "dep:agave-conformance-ffi",
+    "dep:prost",
+    "dep:protosol",
+    "agave-unstable-api",
+    "solana-svm/conformance",
+]
 
 [dependencies]
+agave-conformance-ffi = { workspace = true, optional = true }
 agave-feature-set = { workspace = true }
 agave-transaction-view = { workspace = true }
 agave-votor-messages = { workspace = true, features = ["dev-context-only-utils"] }

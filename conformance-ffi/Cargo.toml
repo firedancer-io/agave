@@ -1,0 +1,17 @@
+[package]
+name = "agave-conformance-ffi"
+description = "FFI lifecycle bindings shared by the Agave conformance harnesses"
+publish = false
+version = { workspace = true }
+authors = { workspace = true }
+repository = { workspace = true }
+homepage = { workspace = true }
+license = { workspace = true }
+edition = { workspace = true }
+workspace = "../dev-bins"
+
+[dependencies]
+agave-logger = { workspace = true }
+
+[lints]
+workspace = true
